@@ -1,4 +1,4 @@
-import { AppError, requiredText } from './store.mjs';
+import { AppError, requiredText } from './validation.mjs';
 
 export async function answerQuestion({ store, mcp, provider, input, signal }) {
   const scope = input.appKey ? store.getApp(input.appKey) : store.get(input.modelKey);

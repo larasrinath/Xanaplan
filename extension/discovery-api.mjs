@@ -1,4 +1,4 @@
-import { discoveryInput } from './discovery-runner.mjs';
+import { discoveryInput } from './discovery-input.mjs';
 
 // Routes and field names come from Anaplan's web clients; see docs/discovery-api.md.
 // All requests are read-only and use Chrome's own session cookie handling.

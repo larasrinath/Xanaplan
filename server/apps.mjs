@@ -1,4 +1,4 @@
-import { AppError, identifier, requiredText } from './store.mjs';
+import { AppError, identifier, requiredText } from './validation.mjs';
 
 // Browser discovery supplies app membership; the authenticated MCP independently
 // resolves and verifies every model ID. Names are never authorization IDs.

@@ -1,6 +1,6 @@
 import { runCli } from './cli.mjs';
 import { DECISION_SCHEMA, SYSTEM_PROMPT, validateDecision } from './llm-contract.mjs';
-import { AppError } from './store.mjs';
+import { AppError } from './validation.mjs';
 
 export class ClaudeProvider {
   constructor({ command = process.env.XANAPLAN_CLAUDE_COMMAND || 'claude', cwd }) { this.command = command; this.cwd = cwd; }

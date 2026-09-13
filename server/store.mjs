@@ -2,18 +2,9 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, chmodSync } from 'n
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-export class AppError extends Error {
-  constructor(message, status = 400, details = {}) { super(message); this.status = status; this.details = details; }
-}
-export function requiredText(value, label, max = 200) {
-  if (typeof value !== 'string' || !value.trim() || value.length > max) throw new AppError(`${label} is required (up to ${max} characters).`);
-  return value.trim();
-}
-export function identifier(value, label) {
-  const id = requiredText(value, label, 80);
-  if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new AppError(`${label} is invalid.`);
-  return id;
-}
+import { AppError, identifier, requiredText } from './validation.mjs';
+import { validateLlmChoice } from './llm-settings.mjs';
+
 export class Store {
   constructor(directory) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -30,6 +21,12 @@ export class Store {
   flush() {
     writeFileSync(this.file + '.tmp', JSON.stringify(this.data, null, 2), { mode: 0o600 });
     renameSync(this.file + '.tmp', this.file);
+  }
+  commit(changes) {
+    const previous = this.data;
+    this.data = { ...previous, ...changes };
+    try { this.flush(); }
+    catch (error) { this.data = previous; throw error; }
   }
   list() { return structuredClone(this.data.models); }
   listApps() { return structuredClone(this.data.apps ?? []); }
@@ -63,31 +60,24 @@ export class Store {
     if (new Set(models.map(model => model.key)).size !== models.length) throw new AppError('Duplicate connected models.');
     const app = { key, appId, origin, tenantId, tenantName, name: requiredText(input.name, 'App name', 300), models,
       context: requiredText(input.context, 'Business context', 60000), revision: (existing?.revision ?? 0) + 1, savedAt: new Date().toISOString(), discoveredAt: input.discoveredAt ?? existing?.discoveredAt ?? null };
-    const previous = this.data;
-    this.data = { ...previous, apps: [...apps.filter(item => item.key !== key && item.key !== existing?.key), app] };
-    try { this.flush(); } catch (error) { this.data = previous; throw error; }
+    this.commit({ apps: [...apps.filter(item => item.key !== key && item.key !== existing?.key), app] });
     return structuredClone(app);
   }
   removeApp(key, revision) {
     if (this.getApp(key).revision !== revision) throw new AppError('App context changed. Reload before removing.', 409);
-    const previous = this.data;
-    this.data = { ...previous, apps: this.listApps().filter(app => app.key !== key) };
-    try { this.flush(); } catch (error) { this.data = previous; throw error; }
+    this.commit({ apps: this.listApps().filter(app => app.key !== key) });
   }
   saveConnection(clientId) {
-    const previous = this.data;
-    this.data = { ...previous, anaplanClientId: requiredText(clientId, 'Anaplan OAuth client ID', 300), anaplanConnectionSavedAt: new Date().toISOString() };
-    try { this.flush(); } catch (error) { this.data = previous; throw error; }
+    this.commit({ anaplanClientId: requiredText(clientId, 'Anaplan OAuth client ID', 300), anaplanConnectionSavedAt: new Date().toISOString() });
   }
   getLlm() {
     return structuredClone(this.data.llm ?? { provider: 'claude', model: '', revision: 1, savedAt: null, models: { claude: '', openai: '' } });
   }
   saveLlm({ provider, model, revision }) {
     const current = this.getLlm();
-    if (!['claude', 'openai'].includes(provider) || typeof model !== 'string' || model.length > 120 || (model.trim() && !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(model.trim()))) throw new AppError('Choose OpenAI or Claude and a valid model name.');
+    const choice = validateLlmChoice({ provider, model });
     if (revision !== current.revision) throw new AppError('AI settings changed in another window. Reload them before saving.', 409);
-    this.data.llm = { provider, model: model.trim(), revision: current.revision + 1, savedAt: new Date().toISOString(), models: { ...current.models, [provider]: model.trim() } };
-    this.flush();
+    this.commit({ llm: { ...choice, revision: current.revision + 1, savedAt: new Date().toISOString(), models: { ...current.models, [provider]: choice.model } } });
     return this.getLlm();
   }
   get(key) {
@@ -109,13 +99,11 @@ export class Store {
       revision: (existing?.revision ?? 0) + 1,
       savedAt: new Date().toISOString(),
     };
-    this.data.models = [...this.data.models.filter(item => item.key !== key), model];
-    this.flush();
+    this.commit({ models: [...this.data.models.filter(item => item.key !== key), model] });
     return structuredClone(model);
   }
   remove(key, revision) {
     if (this.get(key).revision !== revision) throw new AppError('Model context changed. Reload before removing.', 409);
-    this.data.models = this.data.models.filter(model => model.key !== key);
-    this.flush();
+    this.commit({ models: this.data.models.filter(model => model.key !== key) });
   }
 }

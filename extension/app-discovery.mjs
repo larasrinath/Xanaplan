@@ -1,7 +1,7 @@
-import { discoveryInput } from './discovery-runner.mjs';
+import { discoveryInput } from './discovery-input.mjs';
 import { discoveryCache } from './discovery-cache.mjs';
 export { clearDiscoveryCache } from './discovery-cache.mjs';
-export { appOrigin } from './discovery-runner.mjs';
+export { appOrigin } from './discovery-input.mjs';
 
 // The panel never creates a browser tab for discovery, including error paths.
 export async function discoverApps({ origin, tenantId, appId, signal, refresh = false, cache = discoveryCache, chromeApi = globalThis.chrome }) {

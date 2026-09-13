@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { Readable } from 'node:stream';
+import { request } from './http-client.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../server/store.mjs';
-import { createApp } from '../server/index.mjs';
+import { createApp } from '../server/app.mjs';
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'xanaplan-connection-'));
@@ -19,16 +18,7 @@ function client(store, fallback = '') {
     mcp: { clientId: () => store.data.anaplanClientId || fallback, reset: async () => {} },
     providers: { status: async () => { throw new Error('AI status unavailable'); } },
   });
-  // Exercise the HTTP handler without opening a network listener or using real services.
-  return (method, body) => new Promise(resolve => {
-    const req = Readable.from(body ? [JSON.stringify(body)] : []);
-    Object.assign(req, { method, url: '/connection', headers: { host: '127.0.0.1:8766', authorization: `Bearer ${store.data.token}`, 'content-type': 'application/json' } });
-    const res = new EventEmitter();
-    res.setHeader = () => {};
-    res.writeHead = status => { res.status = status; };
-    res.end = text => resolve({ status: res.status, body: JSON.parse(text) });
-    server.emit('request', req, res);
-  });
+  return (method, body) => request(server, store, method, '/connection', body);
 }
 
 test('OAuth Save confirms persisted settings and restores the same ID after a restart without AI status', async t => {

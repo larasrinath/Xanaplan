@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { AppError } from './store.mjs';
+import { AppError } from './validation.mjs';
 
 // Deliberate allowlist, reviewed against the sibling project's handlers. New MCP tools are denied by default.
 export const READ_TOOLS = new Set([

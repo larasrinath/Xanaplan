@@ -50,6 +50,8 @@ Each AI read includes a model key from the app’s enabled model list. The helpe
 
 ## Local architecture
 
+See the [architecture guide](architecture.md) for current module ownership and refactoring boundaries.
+
 Chrome side panel → paired HTTP helper on 127.0.0.1:8766 → the Admin-selected OpenAI/Codex or Claude/Claude Code connection for reasoning + existing anaplan-mcp subprocess for reads.
 
 The helper uses the sibling MCP checkout without modifying it. It loads MCP schemas and calls only its explicit read allowlist. The AI never receives the broad MCP server as a direct tool connection. The helper inserts the chosen connected model/workspace IDs and rejects attempts to access any model outside the enabled app. Imports, exports, process runs, cell/list writes, and model administration tools are unavailable.
@@ -60,6 +62,8 @@ Claude disables built-in tools, other MCP servers, hooks, skills, browser access
 
 
 The helper saves provider/model settings and revisions, enabled apps and connected model memberships, legacy model contexts, context revisions, an optional public Anaplan OAuth client ID, and a random pairing token in `.local/settings.json` with owner-only permissions. Generated `extension/local-config.js` pairs this extension with the helper. Neither file is committed. Model reads use the MCP's in-memory session; webpage cookies are not copied. Restarting or expiry can require Anaplan authorization again.
+
+All save and removal paths share the same persistence operation. If writing settings fails, the previous in-memory snapshot remains active; a failed AI save does not switch the provider or advance its revision.
 
 The service binds only to loopback, checks the Host header and extension Origin when present, and requires the pairing token on every API request. It serves no webpage or local files. Questions and relevant context/data go to the user's configured AI connection when submitted; “local” describes setup and orchestration, not offline inference.
 

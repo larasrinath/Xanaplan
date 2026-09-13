@@ -1,18 +1,34 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-for (const directory of ['extension', 'server', 'scripts']) {
-  for (const file of readdirSync(directory).filter(file => /\.(mjs|js)$/.test(file))) {
-    const result = spawnSync(process.execPath, ['--check', `${directory}/${file}`], { stdio: 'inherit' });
+import { dirname, join, resolve } from 'node:path';
+
+const generatedConfig = resolve('extension/local-config.js');
+for (const directory of ['extension', 'server', 'scripts', 'tests']) {
+  for (const file of readdirSync(directory, { recursive: true }).filter(file => /\.(mjs|js|cjs)$/.test(file))) {
+    const path = join(directory, file);
+    const result = spawnSync(process.execPath, ['--check', path], { stdio: 'inherit' });
     if (result.status !== 0) process.exit(result.status ?? 1);
+    // Check literal module links in production code. The UI harness embeds its
+    // browser imports in a string, so they are resolved by the browser instead.
+    if (!['extension', 'server'].includes(directory)) continue;
+    for (const [, , target] of readFileSync(path, 'utf8').matchAll(/\b(?:from\s+|import\s*\(\s*)(['"])(\.{1,2}\/[^'"]+)\1/g)) {
+      const dependency = resolve(dirname(path), target);
+      if (dependency !== generatedConfig) readFileSync(dependency);
+    }
   }
 }
 const manifest = JSON.parse(readFileSync('extension/manifest.json'));
+const pkg = JSON.parse(readFileSync('package.json'));
+if (manifest.version !== pkg.version) throw new Error('Package and extension versions must match.');
 for (const file of [manifest.background.service_worker, manifest.side_panel.default_path]) readFileSync(`extension/${file}`);
+const panel = join('extension', manifest.side_panel.default_path);
+for (const [, asset] of readFileSync(panel, 'utf8').matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)=["']([^"']+)["']/g)) {
+  readFileSync(resolve(dirname(panel), asset));
+}
 if (manifest.action.default_popup) throw new Error('Assistant must open in the Chrome side panel.');
 if (manifest.permissions.includes('offscreen') || manifest.permissions.includes('scripting') || manifest.content_scripts?.length) throw new Error('Discovery must use read-only background requests, without frames or content scripts.');
 if (!manifest.content_security_policy.extension_pages.includes("frame-src 'none'") || !manifest.content_security_policy.extension_pages.includes('https://*.app.anaplan.com')) throw new Error('Allow Anaplan data requests and disable embedded pages.');
-for (const script of manifest.content_scripts ?? []) for (const file of script.js) readFileSync(`extension/${file}`);
-for (const file of ['background.js', 'app-discovery.mjs', 'discovery-background.mjs', 'discovery-runner.mjs', 'discovery-api.mjs']) {
+for (const file of ['background.js', 'app-discovery.mjs', 'discovery-background.mjs', 'discovery-input.mjs', 'discovery-api.mjs']) {
   if (/\btabs\s*\.\s*(create|update|remove)|window\s*\.\s*open/.test(readFileSync(`extension/${file}`, 'utf8'))) throw new Error(`${file}: discovery must never open a tab.`);
 }
-console.log('JavaScript syntax and extension entry points verified.');
+console.log('JavaScript syntax, module links, extension assets, and versions verified.');

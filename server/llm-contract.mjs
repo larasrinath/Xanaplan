@@ -1,4 +1,4 @@
-import { AppError } from './store.mjs';
+import { AppError } from './validation.mjs';
 
 export const DECISION_SCHEMA = {
   type: 'object', additionalProperties: false,

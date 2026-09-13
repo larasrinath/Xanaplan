@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runCli } from './cli.mjs';
 import { DECISION_SCHEMA, SYSTEM_PROMPT, validateDecision } from './llm-contract.mjs';
-import { AppError } from './store.mjs';
+import { AppError } from './validation.mjs';
 
 // Verified against Codex CLI 0.154.0. Ignore personal configuration while preserving official CLI auth.
 // Tools which can read local/private context, contact other services, or execute actions are disabled.

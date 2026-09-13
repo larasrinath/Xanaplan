@@ -2,7 +2,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 const extension = new URL('../extension/', import.meta.url);
-const port = 8768;
+const port = Number(process.env.XANAPLAN_UI_PORT ?? 8768);
 let models = [];
 let apps = [];
 let llm = { provider: 'claude', model: '', revision: 1, models: { claude: '', openai: '' } };
@@ -15,10 +15,6 @@ const server = createServer(async (req, res) => {
   if (req.headers.host !== `127.0.0.1:${port}`) return send(res, 403, {});
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
   res.setHeader('Cache-Control', 'no-store');
-  if (url.pathname === '/tenant-reader') {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(readFileSync(new URL('tenant-reader.html', import.meta.url)));
-  }
   if (url.pathname === '/test/auth' && req.method === 'POST') {
     let input = ''; for await (const chunk of req) input += chunk;
     const mode = new URLSearchParams(input).get('mode');
@@ -127,7 +123,7 @@ const server = createServer(async (req, res) => {
     return res.end(shim + readFileSync(new URL('app-discovery.mjs', extension), 'utf8').replace('chromeApi = globalThis.chrome', 'chromeApi = syntheticChrome'));
   }
   const file = url.pathname.slice(1);
-  if (!['panel.html', 'panel.js', 'panel.css', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-runner.mjs', 'discovery-cache.mjs', 'discovery-dom.js', 'discovery-api.mjs', 'discovery-background.mjs'].includes(file)) return send(res, 404, {});
+  if (!['panel.html', 'panel.js', 'local-api.mjs', 'conversation-view.mjs', 'panel.css', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs'].includes(file)) return send(res, 404, {});
   res.setHeader('Content-Type', /\.(mjs|js)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
   res.end(readFileSync(new URL(file, extension)));
 });

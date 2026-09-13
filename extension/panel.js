@@ -1,9 +1,12 @@
 import { discoverApps, appOrigin, clearDiscoveryCache } from './app-discovery.mjs';
 import { safeSignInUrl, openAnaplanSignIn } from './anaplan-auth.mjs';
 import { createSearchableSelect, matchesSearch } from './searchable-select.mjs';
+import { createLocalApi } from './local-api.mjs';
+import { renderConversation } from './conversation-view.mjs';
 
 const $ = id => document.getElementById(id);
 let connection = null;
+const api = createLocalApi(() => connection);
 let apps = [], selectedKey = '', editing = null, busy = false, controller = null, loadSequence = 0;
 let connectionStatus = null;
 let anaplanSettings = null, anaplanDirty = false, connectionSaving = false;
@@ -101,23 +104,6 @@ function showError(error) {
     $('anaplan-connection').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('anaplan-connection').focus({ preventScroll: true });
   } else notice(error.message, true);
 }
-async function api(path, { method = 'GET', body, signal } = {}) {
-  if (!connection) throw new Error('Start the local helper with npm start, then reload this extension in Chrome.');
-  let response;
-  try {
-    response = await fetch(connection.baseUrl + path, {
-      method, signal: signal ?? AbortSignal.timeout(70000),
-      headers: { Authorization: `Bearer ${connection.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-  } catch (error) {
-    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-    throw new Error('Cannot reach the local helper. Run npm start in the Xanaplan folder, then select Check.');
-  }
-  const data = await response.json();
-  if (!response.ok) throw Object.assign(new Error(data.error ?? 'Request failed.'), data);
-  return data;
-}
 function on(id, event, handler) {
   $(id).addEventListener(event, async e => { try { await handler(e); } catch (error) { showError(error); } });
 }
@@ -181,40 +167,8 @@ function applyLlm(settings, force = false) {
   }
   renderLlm(); renderMessages();
 }
-const toolLabels = {
-  show_modules: 'Model modules', show_moduledetails: 'Module dimensions', show_lineitems: 'Line items',
-  show_savedviews: 'Saved views', show_viewdetails: 'View dimensions', show_lists: 'Model lists',
-  get_list_items: 'List items', show_dimensionitems: 'Dimension items', show_viewdimensionitems: 'View members',
-  show_lineitem_dimensions: 'Line-item dimensions', show_lineitem_dimensions_items: 'Line-item members',
-  lookup_dimensionitems: 'Dimension lookup', show_currentperiod: 'Current period', show_modelcalendar: 'Model calendar',
-  show_versions: 'Versions', read_cells: 'Cell data',
-};
 function renderMessages() {
-  const messages = currentThread();
-  $('welcome').hidden = messages.length > 0;
-  $('first-app').hidden = apps.length > 0;
-  $('messages').replaceChildren();
-  for (const message of messages) {
-    const article = document.createElement('article'); article.className = `message ${message.role}`;
-    const role = document.createElement('div'); role.className = 'role'; role.textContent = message.role === 'user' ? 'You' : 'Xanaplan';
-    const body = document.createElement('div'); body.className = 'body'; body.textContent = message.text;
-    article.append(role, body);
-    if (message.sources?.length) {
-      const details = document.createElement('details'); details.className = 'sources';
-      const summary = document.createElement('summary'); summary.textContent = `${message.sources.length} model source${message.sources.length === 1 ? '' : 's'} · context v${message.revision}`;
-      const list = document.createElement('ul');
-      for (const source of message.sources) {
-        const item = document.createElement('li');
-        const scope = Object.entries(source.arguments).filter(([key]) => !['workspaceId', 'modelId'].includes(key)).map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`).join(' · ');
-        item.textContent = `[${source.id}] ${source.modelName ? source.modelName + ' · ' : ''}${toolLabels[source.tool] ?? source.tool} · ${new Date(source.readAt).toLocaleTimeString()}${source.partial ? ' · Partial data' : ''}${source.rowLimit ? ` · Up to ${source.rowLimit} rows` : ''}\n${scope}`;
-        list.append(item);
-      }
-      details.append(summary, list); article.append(details);
-    }
-    $('messages').append(article);
-  }
-  const app = currentApp();
-  $('context-note').textContent = app ? `Context v${app.revision} · ${app.tenantName || 'Tenant not linked'}` : 'Set up your first app in Admin.';
+  renderConversation(document, { messages: currentThread(), hasApps: apps.length > 0, app: currentApp() });
   updateComposer();
 }
 function renderApps() {

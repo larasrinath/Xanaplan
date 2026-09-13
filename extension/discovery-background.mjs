@@ -1,4 +1,4 @@
-import { discoveryInput } from './discovery-runner.mjs';
+import { discoveryInput } from './discovery-input.mjs';
 import { readAnaplanDiscovery } from './discovery-api.mjs';
 
 export function createDiscoveryService(chromeApi, { read = readAnaplanDiscovery, timeout = 55000 } = {}) {

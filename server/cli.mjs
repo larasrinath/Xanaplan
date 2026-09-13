@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { AppError } from './store.mjs';
+import { AppError } from './validation.mjs';
 
 export function runCli(command, args, { cwd, label, input = '', signal, timeout = 120000, onLine } = {}) {
     return new Promise((resolve, reject) => {

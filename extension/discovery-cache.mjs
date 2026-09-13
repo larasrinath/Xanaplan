@@ -1,4 +1,4 @@
-import { discoveryInput } from './discovery-runner.mjs';
+import { discoveryInput } from './discovery-input.mjs';
 
 const STORAGE_KEY = 'xanaplan.discovery-cache.v1';
 const keyFor = input => `${input.origin}|${input.tenantId || '@tenants'}`;

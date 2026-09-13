@@ -1,7 +1,0 @@
-#xanaplan-resize-layer { position: fixed; inset: 0; pointer-events: none; z-index: 900; }
-#xanaplan-resize-layer .xp-handle { position: fixed; box-sizing: border-box; width: 8px; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; cursor: col-resize; pointer-events: auto; touch-action: none; }
-#xanaplan-resize-layer .xp-handle:hover, #xanaplan-resize-layer .xp-handle:focus-visible { background: #087fa866; outline: 1px solid #087fa8; }
-#xanaplan-resize-layer .xp-guide { position: fixed; width: 1px; background: #087fa8; pointer-events: none; }
-#xanaplan-resize-layer .xp-width { position: absolute; top: -26px; left: 5px; background: #083b50; color: white; border-radius: 4px; padding: 4px 7px; font: 12px system-ui, sans-serif; white-space: nowrap; }
-#xanaplan-resize-layer .xp-status { position: fixed; bottom: 20px; right: 20px; max-width: 380px; padding: 10px 14px; border: 1px solid #b4d0dc; border-radius: 8px; color: #143a4b; background: #f4fbff; box-shadow: 0 3px 15px #1233; font: 13px/1.5 system-ui, sans-serif; }
-#xanaplan-resize-layer [hidden] { display: none !important; }

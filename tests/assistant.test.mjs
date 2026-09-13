@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../server/store.mjs';
 import { scopeArguments, parseChoices, authorizationError, READ_TOOLS } from '../server/mcp.mjs';
-import { trustedRequest } from '../server/index.mjs';
+import { trustedRequest } from '../server/http.mjs';
 import { answerQuestion } from '../server/chat.mjs';
 
 const model = { workspaceId: 'workspace1', modelId: 'model1', name: 'Sample sales', workspaceName: 'Test workspace', context: 'Synthetic test context. Currency USD; calendar year; Actual and Budget.', revision: 0 };

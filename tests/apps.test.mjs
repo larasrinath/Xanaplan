@@ -3,12 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Readable } from 'node:stream';
-import { EventEmitter } from 'node:events';
+import { request } from './http-client.mjs';
 import { Store } from '../server/store.mjs';
 import { verifyAppDiscovery } from '../server/apps.mjs';
 import { answerQuestion } from '../server/chat.mjs';
-import { createApp } from '../server/index.mjs';
+import { createApp } from '../server/app.mjs';
 
 const models = [
   { key: 'w1:m1', workspaceId: 'w1', workspaceName: 'Finance', modelId: 'm1', name: 'Actuals' },
@@ -23,14 +22,6 @@ function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'xanaplan-apps-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   return { directory, store: new Store(directory) };
-}
-function request(server, store, method, path, body) {
-  return new Promise(resolve => {
-    const req = Readable.from(body ? [JSON.stringify(body)] : []);
-    Object.assign(req, { method, url: path, headers: { host: '127.0.0.1:8766', authorization: `Bearer ${store.data.token}`, 'content-type': 'application/json' } });
-    const res = new EventEmitter(); res.setHeader = () => {}; res.writeHead = status => { res.status = status; }; res.end = text => resolve({ status: res.status, body: JSON.parse(text) });
-    server.emit('request', req, res);
-  });
 }
 test('app context persists with multiple models and rejects stale or empty memberships', t => {
   const { directory, store } = fixture(t), saved = store.saveApp(app);

@@ -53,17 +53,7 @@ The adapter uses internal web-service contracts observed in Anaplan's public cli
 
 ## Recent changes
 
-Version 0.6.0 replaces the failing offscreen tenant-menu reader with background GET requests for tenants, apps and connected models. The manifest no longer enables offscreen documents or content scripts. App ownership is checked before and after reading model associations, and the helper still verifies model access through MCP. Single-tenant accounts and empty catalogs are supported without UI scraping.
-
-Version 0.6.1 starts both access cards collapsed and adds **Search apps** above the app dropdown. Search filters loaded names immediately, with a match count and Clear control. It keeps the current app selection and context while you search, and resets when you choose another tenant.
-
-Version 0.6.3 gives both access cards matching headings, account rows, status dots and **Check connection** buttons. Setup guidance appears only when needed, and OAuth configuration is under **Connection settings**. AI changes show **Discard changes** and enable **Save settings**; unchanged settings keep Save disabled.
-
-Version 0.6.4 applies the same cleanup to **Enable an app**: Refresh actions beside their fields, search grouped with App, a compact **Import file** control and shorter context guidance. Normal cache timestamps move into Refresh tooltips; loading, errors and failed-refresh warnings remain inline. Cache lifetime and access checks are unchanged.
-
-Version 0.6.5 moves **Search apps** inside the App dropdown. Open the field to search and choose with the mouse or arrow keys and Enter; Escape closes it without changing the selection. A separate **Search enabled apps** field filters saved cards by app or tenant name. Both searches run locally and preserve context drafts.
-
-Version 0.6.6 replaces the separate refresh controls with one **Refresh** in the app setup header. It refreshes tenants, the selected tenant's apps, and any selected app's connected models. Existing selections and draft context are retained when the selections remain available. When editing an enabled app, it refreshes that app's connected models.
+The current refactor removes unused prototypes, separates runtime responsibilities, and makes failed saves consistent. See the [changelog](CHANGELOG.md) for unreleased work and version history.
 
 ## Data and local state
 
@@ -80,9 +70,10 @@ AI processing is remote: questions, context and relevant Anaplan results go thro
 | [extension/](extension/) | Chrome extension, side-panel UI, and Anaplan discovery. |
 | [server/](server/) | Local API helper, app/context storage, AI providers, and MCP access. |
 | [tests/](tests/) | Automated tests and the synthetic UI harness. |
-| [scripts/](scripts/) | JavaScript syntax and extension entry-point checks. |
-| [demo/](demo/) | Demo page and fixtures. |
-| [docs/](docs/) | Product design, discovery evidence, theme, and future plans. |
+| [scripts/](scripts/) | Syntax, module-link, extension-asset, and version checks. |
+| [docs/](docs/) | Architecture, product design, discovery evidence, theme, and future plans. |
+
+See the [architecture guide](docs/architecture.md) for module responsibilities and the request flow.
 
 ## Verification
 
@@ -93,12 +84,16 @@ npm run check
 
 `npm run test:ui` runs an explicitly synthetic UI harness. It never connects to Anaplan or an AI provider and is not the extension install path.
 
-Tests cover app persistence, multi-model source routing, verified discovery tickets, stale revisions, and discovery cancellation, plus the read-only gate, cross-model rejection, persistence/revisions, pairing/origin checks, authorization link validation, sources, truncation and cancellation. A real MCP handshake and synthetic requests through local OpenAI and Claude subscription connections were verified. Additional tests cover provider/model enforcement, stale AI settings, connection-test isolation and cancellation. Browser checks covered setup, saving/editing context, revision changes, duplicate app selection, questions, answers and sources with synthetic data. Live answer accuracy still requires Anaplan sign-in, installation in Chrome, and testing your selected app.
+Tests cover persistence rollback after failed writes, the paired HTTP request boundary, panel API errors and cancellation, app persistence, multi-model source routing, verified discovery tickets, stale revisions, and discovery cancellation, plus the read-only gate, cross-model rejection, persistence/revisions, pairing/origin checks, authorization link validation, sources, truncation and cancellation. Additional tests cover provider/model enforcement, stale AI settings, connection-test isolation and cancellation.
 
-The earlier column-resize code remains as historical code but is no longer loaded by the manifest. Shared administration and hosting are deferred. See [the current design](docs/product-design.md) and [future shared administration](docs/future-management.md).
+Earlier verification included a real MCP handshake, synthetic requests through local OpenAI and Claude subscription connections, and browser checks for setup, saving/editing context, revision changes, duplicate app selection, questions, answers, and sources. Rerun the synthetic browser flows after frontend changes. Live answer accuracy still requires Anaplan sign-in, installation in Chrome, and testing your selected app.
+
+The retired column-resize and iframe-discovery prototypes are available in Git history. Legacy saved model contexts remain supported; this cleanup does not migrate or delete local settings. Shared administration and hosting remain deferred.
 
 ## Documentation
 
+- [Architecture guide](docs/architecture.md): module responsibilities, request flow, and refactoring boundaries.
+- [Changelog](CHANGELOG.md): unreleased changes and version history.
 - [Current product design](docs/product-design.md): Assistant and Admin flows, architecture, and practical bounds.
 - [Discovery API evidence](docs/discovery-api.md): request contracts, access checks, and verification limits.
 - [Visual theme](docs/theme.md): interface styling guidance.
@@ -106,6 +101,6 @@ The earlier column-resize code remains as historical code but is no longer loade
 
 ## Keeping this document current
 
-Update this README in the same commit as any change that affects installation, UI flows, supported behavior, configuration, or data handling. Keep the version above aligned with the package and extension manifest when releasing, and add a concise entry under Recent changes for user-visible updates.
+Update this README in the same commit as any change that affects installation, UI flows, supported behavior, configuration, or data handling. Keep the version above aligned with the package and extension manifest when releasing, and add a concise entry to `CHANGELOG.md` for user-visible updates. Keep the project layout and architecture guide aligned with file moves and removals.
 
 Keep implemented features, known limitations, and future plans distinct. When reporting verification, say whether it used automated tests, synthetic fixtures, or a live signed-in Anaplan account; do not treat one as evidence for another. Put detailed design and investigation notes in `docs/` and link them here so this remains the starting point for the project.
