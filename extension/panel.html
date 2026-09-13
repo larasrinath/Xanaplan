@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Xanaplan · Business Assistant</title><link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">x</span><span>Xanaplan<small>YOUR BUSINESS, IN CONTEXT</small></span></div>
+    <span class="local-badge"><span aria-hidden="true">●</span> Local</span>
+  </header>
+  <nav class="view-tabs" aria-label="Main views">
+    <button id="assistant-tab" aria-pressed="true" type="button">Assistant</button>
+    <button id="admin-tab" aria-pressed="false" type="button">Admin</button>
+  </nav>
+  <div id="notice" role="status" hidden></div>
+  <main>
+    <section id="assistant-view" aria-label="Assistant">
+      <div class="model-bar"><label for="chat-app">CONVERSATION APP</label><select id="chat-app"><option value="">No enabled apps</option></select><div class="model-meta"><span id="context-note">Set up your first app in Admin.</span><span>Read only</span></div><p id="active-ai" class="active-ai">AI is managed in Admin.</p></div>
+      <div id="conversation" aria-live="polite" aria-relevant="additions">
+        <div id="welcome" class="welcome">
+          <div class="eyebrow">A clearer view of your business</div>
+          <h1>Good questions.<br>Grounded answers.</h1>
+          <p>Explore what changed, understand the drivers, and decide what comes next.</p>
+          <div class="suggestions" aria-label="Example business questions">
+            <button type="button" data-question="How are we performing against budget this quarter?">How are we performing against budget?<span>↗</span></button>
+            <button type="button" data-question="What are the main drivers of the change in operating costs?">What is driving the change in costs?<span>↗</span></button>
+            <button type="button" data-question="Where should we focus to improve our margin, and why?">Where should we focus to improve margin?<span>↗</span></button>
+          </div>
+          <button id="first-app" class="primary" type="button">Set up your first app →</button>
+        </div>
+        <div id="messages"></div>
+      </div>
+      <form id="question-form" class="composer">
+        <label class="sr-only" for="question">Ask a business question</label>
+        <textarea id="question" rows="3" maxlength="4000" placeholder="Ask about your business…" required></textarea>
+        <div class="composer-footer"><span id="question-status">Answers use your selected app.</span><button id="cancel-question" type="button" hidden>Stop</button><button id="send" class="primary" type="submit" disabled>Ask ↑</button></div>
+      </form>
+      <p class="privacy-note">Business context and relevant data are sent to your configured AI connection when you ask.</p>
+    </section>
+    <section id="admin-view" aria-label="Admin" hidden>
+      <div class="section-heading"><div><div class="eyebrow">Your local setup</div><h1>Admin setup</h1></div></div>
+      <details id="ai-settings" class="card access-card">
+        <summary><h2>AI access</h2><span id="ai-connection-dot" class="connection-dot" data-state="unknown" role="img" aria-label="AI sign-in status not checked" title="AI sign-in status not checked">●</span></summary>
+        <form id="llm-form" class="access-form">
+          <label for="llm-provider">Provider</label><select id="llm-provider" disabled><option value="openai">OpenAI</option><option value="claude" selected>Claude</option></select>
+          <label for="llm-model">Model <span class="optional-label">(optional)</span></label><input id="llm-model" maxlength="120" placeholder="Provider default" autocomplete="off" disabled>
+          <div class="access-connection"><div><strong id="llm-runtime">AI account</strong><p id="llm-status">Checking…</p></div><button id="test-llm" class="connection-action" type="button" title="Checks this provider with a small test request." disabled>Check connection</button></div>
+          <p id="llm-login-help" class="access-note" hidden>In Terminal, run <code id="llm-login">claude auth login</code>.</p>
+          <p id="llm-test-result" class="access-feedback" role="status"></p>
+          <p id="llm-active" class="access-note" role="status" hidden></p>
+          <div class="access-actions"><button id="reload-llm" class="text-button" type="button" hidden>Discard changes</button><button id="save-llm" class="primary" type="submit" disabled>Save settings</button></div>
+        </form>
+      </details>
+      <details id="connection-settings" class="card access-card">
+        <summary><h2>Anaplan access</h2><span id="connection-dot" class="connection-dot" data-state="unknown" role="img" aria-label="Anaplan connection not checked" title="Anaplan connection not checked">●</span></summary>
+        <section id="anaplan-connection" class="access-account" aria-label="Anaplan connection" tabindex="-1">
+          <div class="access-connection"><div><strong>Anaplan account</strong><p id="anaplan-status" role="status">Checking…</p></div><button id="connect-anaplan" class="connection-action" type="button">Check connection</button></div>
+          <div id="auth" class="auth-help" hidden>
+            <p id="auth-detail"></p>
+            <a id="auth-link" target="_blank" rel="noopener noreferrer">Open Anaplan sign-in ↗</a>
+            <p id="auth-progress" role="status">After signing in, select Check connection.</p>
+          </div>
+        </section>
+        <details id="anaplan-setup" class="access-setup">
+          <summary>Connection settings</summary>
+          <div id="helper-recovery" hidden>
+            <div class="access-connection"><div><strong>Local helper</strong><p id="helper-status">Unavailable</p></div><button id="refresh-status" class="connection-action" type="button">Check connection</button></div>
+            <p class="access-note">Run <code>npm start</code> in the Xanaplan folder.</p>
+          </div>
+          <form id="connection-form" class="access-form">
+            <label for="client-id">OAuth client ID</label><input id="client-id" autocomplete="off" maxlength="300" placeholder="From your Anaplan OAuth app" required aria-describedby="connection-result">
+            <div class="access-actions"><p id="connection-result" class="connection-result" role="status" aria-live="polite">Loading…</p><button id="save-connection" class="primary" type="submit" disabled>Save settings</button></div>
+          </form>
+        </details>
+      </details>
+      <div class="card-heading apps-heading"><h2>Enabled Anaplan apps</h2><button id="add-app" class="primary" type="button">+ Add app</button></div>
+      <div id="enabled-app-search-section" class="enabled-app-search" hidden>
+        <label for="enabled-app-search" class="sr-only">Search enabled apps</label>
+        <div class="app-search-field"><input id="enabled-app-search" type="search" placeholder="Search enabled apps…" maxlength="160" autocomplete="off" spellcheck="false" aria-controls="enabled-apps" aria-describedby="enabled-app-search-status"><button id="clear-enabled-app-search" class="text-button" type="button" aria-label="Clear enabled app search" hidden>Clear</button></div>
+        <p id="enabled-app-search-status" class="field-hint" role="status"></p>
+      </div>
+      <div id="enabled-apps"></div><p id="legacy-context-note" class="field-hint" hidden>Your earlier model contexts are still saved locally. Enable the relevant app to use the new conversation setup.</p>
+      <section id="app-editor" class="card app-editor" hidden>
+        <div class="card-heading"><h2 id="editor-title">Enable an app</h2><div class="editor-actions"><button id="refresh-discovery" class="text-button" type="button" hidden>Refresh</button><button id="close-editor" class="text-button" type="button">Close</button></div></div>
+        <form id="app-form">
+          <div class="field-heading"><label for="tenant">Tenant</label></div>
+          <select id="tenant" required disabled><option value="">Connect to load tenants</option></select>
+          <div class="field-heading"><label id="app-field-label" for="app-picker-trigger">App</label></div>
+          <div id="app-picker" class="app-picker">
+            <button id="app-picker-trigger" class="picker-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="app-picker-menu" aria-labelledby="app-field-label app-picker-value" disabled><span id="app-picker-value">Select a tenant first</span></button>
+            <div id="app-picker-menu" class="picker-menu" role="dialog" aria-label="Choose an app" hidden>
+              <div class="picker-search">
+                <label class="sr-only" for="app-search">Search apps</label>
+                <div class="app-search-field"><input id="app-search" type="search" role="combobox" placeholder="Search apps…" maxlength="160" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-expanded="false" aria-controls="app-picker-options" aria-describedby="app-search-status"><button id="clear-app-search" class="text-button" type="button" aria-label="Clear app search" hidden>Clear</button></div>
+              </div>
+              <div id="app-picker-options" class="picker-options" role="listbox" aria-label="Apps"></div>
+              <p id="app-search-status" class="field-hint picker-status" role="status"></p>
+            </div>
+            <select id="available-app" hidden aria-hidden="true" tabindex="-1" disabled><option value="">Select a tenant first</option></select>
+          </div>
+          <div class="discovery-progress" hidden><span id="discovery-spinner" class="loading-spinner" aria-hidden="true" hidden></span><p id="app-discovery-status" class="field-hint" role="status"></p><button id="cancel-discovery" class="text-button" type="button" aria-label="Cancel discovery" hidden>Cancel</button></div>
+          <p id="catalog-note" class="field-hint" hidden></p>
+          <section id="connected-models-section" class="connected-models" hidden aria-label="Connected models">
+            <div class="field-heading"><h3>Connected models</h3></div>
+            <ul id="connected-models" aria-label="Connected model details"></ul>
+          </section>
+          <div class="field-heading"><label for="context">Business context</label><button id="import-context" class="text-button" type="button" aria-describedby="context-file-help">Import file</button></div>
+          <input id="context-file" type="file" accept=".txt,.md,.csv,.json" aria-label="Import context file" hidden>
+          <textarea id="context" rows="8" maxlength="60000" required placeholder="Business purpose, KPIs, units, calendar and assumptions…"></textarea>
+          <p id="context-file-help" class="field-hint">Import: TXT, MD, CSV or JSON · 60 KB max</p>
+          <div class="form-footer"><span id="context-count"></span><button id="save-app" class="primary" type="submit" disabled>Save & enable</button></div>
+        </form>
+      </section>
+      <p class="privacy-note">Saved on this Mac. Removing an app here only disables it in this assistant.</p>
+    </section>
+  </main>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

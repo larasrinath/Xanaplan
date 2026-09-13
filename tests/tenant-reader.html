@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Xanaplan tenant reader — synthetic DOM checks</title>
+<style>body { font:16px system-ui; margin:32px; max-width:900px } button { padding:8px; margin:4px } #fixture { padding:16px; border:1px solid #aaa } pre { white-space:pre-wrap }</style>
+<h1>Tenant reader DOM checks</h1>
+<p>Synthetic markup only. No Anaplan connection, accounts or AI calls.</p>
+<button id="run" type="button">Run DOM checks</button>
+<pre id="results" role="status">Not run</pre>
+<section id="fixture" aria-label="Synthetic tenant menu"></section>
+<template id="menu-template">
+  <button data-test-id="tenant-switcher-menu-trigger-button">Synthetic tenant one</button>
+  <div data-test-id="tenant-switcher-menu-trigger-menu" style="display:contents">
+    <button role="menuitem" id="dropdown-menu-option-tenant1" class="tenant-switcher-selected-item">Synthetic tenant one (Default)</button>
+    <button role="menuitem" id="dropdown-menu-option-tenant2">Synthetic tenant two</button>
+  </div>
+</template>
+<script src="/discovery-dom.js"></script>
+<script>
+const root = document.getElementById('fixture');
+const reader = XanaplanDiscoveryDOM.inspectTenantDocument;
+const fixtureDocument = { querySelector: selector => root.querySelector(selector), location: { pathname: '/a/apps' }, readyState: 'complete' };
+const expect = (value, message) => { if (!value) throw new Error(message); };
+function reset() {
+  root.replaceChildren(document.getElementById('menu-template').content.cloneNode(true));
+  return { trigger: root.querySelector('button'), menu: root.querySelector('div'), items: [...root.querySelectorAll('[role="menuitem"]')] };
+}
+document.getElementById('run').addEventListener('click', () => {
+  const output = [];
+  function check(name, run) { try { run(); output.push(`PASS: ${name}`); } catch (error) { output.push(`FAIL: ${name}: ${error.message}`); } }
+  check('Read visible options when their display:contents wrapper has no rectangle', () => {
+    const { trigger, menu, items } = reset(); let clicks = 0;
+    trigger.addEventListener('click', () => clicks++);
+    expect(menu.getClientRects().length === 0 && items[0].getClientRects().length > 0, 'The browser must reproduce a wrapper without a box and visible children.');
+    const result = reader('', false, fixtureDocument);
+    expect(result.kind === 'tenants' && result.items.length === 2 && result.selectedId === 'tenant1', 'Read both tenants and the current selection.');
+    expect(result.items[0].name === 'Synthetic tenant one' && clicks === 0, 'Preserve labels and do not toggle an open menu.');
+  });
+  check('Open a hidden menu once, then read it without toggling it closed', () => {
+    const { trigger, menu } = reset(); menu.style.display = 'none'; let clicks = 0;
+    trigger.addEventListener('click', () => { clicks++; menu.style.display = 'contents'; });
+    expect(reader('', false, fixtureDocument).kind === 'tenant-pending', 'Allow the menu to open.');
+    expect(reader('', false, fixtureDocument).kind === 'tenants' && clicks === 1, 'Only one open action.');
+  });
+  check('Do not click again while menu options are still loading', () => {
+    const { trigger, menu } = reset(); menu.style.display = 'none'; let clicks = 0;
+    trigger.addEventListener('click', () => clicks++);
+    reader('', false, fixtureDocument); reader('', false, fixtureDocument);
+    expect(clicks === 1, 'Polling must not toggle a menu that has not finished rendering.');
+    menu.style.display = 'contents';
+    expect(reader('', false, fixtureDocument).kind === 'tenants', 'Read options when they arrive.');
+  });
+  check('Switch only to the requested tenant when switching is allowed', () => {
+    const { items } = reset(); let clicks = 0;
+    items[1].addEventListener('click', () => clicks++);
+    expect(reader('tenant2', false, fixtureDocument).selectedId === 'tenant1' && clicks === 0, 'Read-only verification cannot switch.');
+    expect(reader('tenant2', true, fixtureDocument).kind === 'tenant-switching' && clicks === 1, 'Select the exact requested tenant.');
+  });
+  check('Report missing selection without inventing an active tenant', () => {
+    const { items } = reset(); items[0].className = '';
+    const result = reader('', false, fixtureDocument);
+    expect(result.stage === 'selection-unrecognized' && result.parsedItems === 2 && result.selectedItems === 0, 'Specific selection diagnostic.');
+  });
+  check('Report unsupported identifiers instead of returning a partial tenant list', () => {
+    const { items } = reset(); items[1].id = 'unknown-option';
+    const result = reader('', false, fixtureDocument);
+    expect(result.stage === 'items-unrecognized' && result.visibleItems === 2 && result.parsedItems === 1, 'Specific identifier diagnostic.');
+  });
+  check('Report missing selector without copying page content into diagnostics', () => {
+    root.replaceChildren();
+    const result = reader('', false, fixtureDocument);
+    expect(result.stage === 'selector-missing' && result.page === 'apps' && result.ready === 'complete', 'Specific page diagnostic.');
+    expect(!JSON.stringify(result).includes('Synthetic tenant'), 'No account labels in diagnostics.');
+  });
+  root.replaceChildren();
+  document.getElementById('results').textContent = output.join('\n');
+});
+</script>
+</html>

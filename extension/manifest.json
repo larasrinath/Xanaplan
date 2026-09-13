@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Xanaplan — Business Assistant",
+  "version": "0.6.6",
+  "minimum_chrome_version": "116",
+  "description": "Ask business questions alongside Anaplan, with local app context and read-only model access.",
+  "permissions": ["sidePanel", "activeTab"],
+  "host_permissions": ["http://127.0.0.1:8766/*", "https://*.app.anaplan.com/*"],
+  "action": { "default_title": "Open Xanaplan" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "panel.html" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:8766 https://*.app.anaplan.com; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  }
+}
