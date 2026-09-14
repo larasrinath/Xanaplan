@@ -6,7 +6,7 @@ This README is a living document: update it alongside changes to setup, behavior
 
 ## Current status
 
-- **Version:** 0.6.6, recorded in [package.json](package.json) and the [extension manifest](extension/manifest.json).
+- **Version:** 0.8.2, recorded in [package.json](package.json) and the [extension manifest](extension/manifest.json).
 - **Delivery:** a locally loaded Chrome side-panel extension and a local Node.js helper, for one person using both Assistant and Admin.
 - **AI connections:** OpenAI through Codex CLI or Claude through Claude Code, selected by Admin.
 - **Validation boundary:** automated and synthetic checks are available; live Anaplan discovery and business-answer accuracy still require verification with a signed-in account.
@@ -29,7 +29,9 @@ cd Xanaplan
 4. Sign in to Anaplan in Chrome and click **Xanaplan** in the extensions toolbar. It opens in Chrome’s side panel. You do not need to open the target UX app first.
 5. In **Admin → AI access**, choose **OpenAI** or **Claude**, enter an optional **Model**, then **Check connection** and **Save settings** if you changed the saved choice. Blank model means provider default. This saved choice applies to all enabled Anaplan apps. Testing an unsaved choice does not activate it. Existing installations retain Claude until Admin saves a different choice.
 6. In **Admin**, select **Add app**. Complete Anaplan authorization when prompted, then **Check connection**. Choose **Tenant → App**. The extension identifies connected models and the helper verifies access. Models are shown as read-only details and included automatically. Add business context and select **Save & enable**.
-7. Switch to **Assistant**, select the enabled app, and ask a business question.
+7. Switch to **Assistant** and select the enabled app. **Follow current tab** identifies its published page. Alternatively, choose a page for chat; this does not navigate Anaplan. Check the displayed model, modules and selections, then ask a question. If the active model is ambiguous, choose the source model for chat.
+
+For this update, restart the helper and reload the unpacked extension. The extension now requests `scripting` permission for a short, read-only snapshot of visible Anaplan selector controls; it installs no persistent content script.
 
 Anaplan webpage sign-in and MCP authorization are separate. The helper detects the public Anaplan OAuth client ID from `ANAPLAN_CLIENT_ID` or the Anaplan section of your local Codex MCP configuration. Otherwise, enter it in **Admin → Anaplan access → Connection settings**. AI sign-in is separate too; the extension never asks you to paste a subscription token.
 
@@ -41,11 +43,13 @@ If the MCP checkout is elsewhere, set `XANAPLAN_MCP_DIR` to its absolute path be
 - Local enabled-app list, context editing, revision checks, and removal from the assistant.
 - Optional UTF-8 TXT, Markdown, CSV or JSON context import, up to 60 KB. Binary model backups, PDF and Word files are not yet supported.
 - Admin-managed OpenAI or Claude settings, with saved provider/model enforcement and no automatic fallback.
-- Business Q&A through the saved AI connection and 16 selected MCP read tools. Sources show reads, filters, times and row limits.
+- Business Q&A through the saved AI connection and a page-scoped subset of the MCP read tools. Sources show the page, card, model, effective filters, reads, times and row limits.
 - Server-enforced read-only access and enabled-app model scope. No exports, imports, process runs, cell writes or list changes.
-- Separate in-memory conversations by app/context and AI-settings revision; Stop cancels inference. Old-provider history is not automatically sent to a new provider.
+- Save completed conversations locally and reopen them through searchable **History**. **New chat** preserves previous chats. Matching app/page/filter/AI context can resume; other contexts open for review without navigating Anaplan. Stop or a context change cancels inference.
 
-This version does not infer UX-card filters or follow tab changes automatically. Select the app and specify the period/scenario/entity where relevant. It discovers model structure without requiring individual page or module setup.
+The Assistant starts with the page's verified modules and follows relevant formula references into other modules when needed. Page and independent card selectors stay separate. Ask for an explicit period, version or entity by name to override that dimension for one answer; other defaults are retained. Manually selected pages label inherited selections and published defaults instead of calling them live selections.
+
+The adapter supports published boards and worksheets. Saved/default cards with single-item page dimensions can be read directly. Custom cards can supply verified underlying module data: the assistant inspects their query metadata, line items and formulas, preserves selected context, and verifies business predicates before answering. Source details distinguish applied filters from conditions that must be evaluated against the data. Advanced/multi-select/scoped filters, runtime pivots and some line-item cards still lack exact reproduction; unresolved conditions or incomplete data cannot establish a card total. Reports are unavailable. See [page context and live acceptance](docs/page-assistant.md) and the [flow review and discussion plan](docs/assistant-flow-review.md).
 
 App discovery uses the data services called by Anaplan's own web clients. A single GET loads accessible tenants; the selected tenant's apps are then requested directly. Choosing a tenant does not change Anaplan's active tenant or open a page. Workspaces are resolved automatically from connected models; there is no workspace setup step or workspace filter.
 
@@ -53,11 +57,11 @@ The adapter uses internal web-service contracts observed in Anaplan's public cli
 
 ## Recent changes
 
-The current refactor removes unused prototypes, separates runtime responsibilities, and makes failed saves consistent. See the [changelog](CHANGELOG.md) for unreleased work and version history.
+Version 0.8.2 uses captured page selections for context omitted from a question, checks view members when direct name lookup fails, and verifies fixed hidden line-item choices. The Assistant stays focused on compact app/page names and a single line of confirmed page selection values. Technical context details stay behind the scenes. [Saved chat history](docs/chat-history.md) lets you search and reopen earlier conversations. See the [changelog](CHANGELOG.md) for version history.
 
 ## Data and local state
 
-Tenant/app lists stay saved locally with no time expiry or automatic eviction. Refresh does not enumerate other tenants' app catalogs. A failed refresh keeps the previous list and displays its original update date. Explicit connection changes and authentication resets still clear account-related lists; connected models and access verification remain live. Reload the unpacked extension in the development Chrome profile and reopen the side panel; this frontend update does not require restarting an already-running helper. Earlier app contexts and dropdown caches remain locally available. Live credentialed requests and business-answer accuracy still need verification in the installed Chrome profile.
+Tenant/app lists stay saved locally with no time expiry or automatic eviction. A failed refresh keeps the previous list and displays its original update date. Explicit connection changes and authentication resets clear account-related lists. Page definitions and verified context are transient: page verification expires after five minutes and is refreshed before another question. Earlier app contexts and dropdown caches remain available. Live credentialed requests and business-answer accuracy still need verification in the installed Chrome profile.
 
 Settings and context live in `.local/`. Generated `extension/local-config.js` contains a local pairing token. Both are ignored by Git; do not share them or serve the project folder with a generic web server. The helper serves APIs only on 127.0.0.1 and checks pairing, Host and Origin.
 
@@ -78,9 +82,12 @@ See the [architecture guide](docs/architecture.md) for module responsibilities a
 ## Verification
 
 ```sh
+npm ci
 npm test
 npm run check
 ```
+
+Tests require Node.js 22.22.2+, 24.15.0+, or 26+ and install jsdom as a development-only dependency. The production helper still has no npm runtime dependencies. DOM tests execute the real panel controller with synthetic Chrome/MCP/AI adapters and isolated temporary settings; they do not claim visual rendering or live browser acceptance.
 
 `npm run test:ui` runs an explicitly synthetic UI harness. It never connects to Anaplan or an AI provider and is not the extension install path.
 
@@ -96,6 +103,8 @@ The retired column-resize and iframe-discovery prototypes are available in Git h
 - [Changelog](CHANGELOG.md): unreleased changes and version history.
 - [Current product design](docs/product-design.md): Assistant and Admin flows, architecture, and practical bounds.
 - [Discovery API evidence](docs/discovery-api.md): request contracts, access checks, and verification limits.
+- [Page assistant](docs/page-assistant.md): implemented context rules, adapter evidence, limits, and tomorrow's live test cases.
+- [Assistant flow review](docs/assistant-flow-review.md): end-to-end assessment and proposed changes to discuss.
 - [Visual theme](docs/theme.md): interface styling guidance.
 - [Future shared administration](docs/future-management.md): proposed requirements and open decisions for a later hosted version.
 

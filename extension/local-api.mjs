@@ -14,7 +14,12 @@ export function createLocalApi(getConnection, { fetchImpl = globalThis.fetch } =
       throw new Error('Cannot reach the local helper. Run npm start in the Xanaplan folder, then select Check.');
     }
     const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.error ?? 'Request failed.'), data);
+    if (!response.ok) {
+      if (response.status === 404 && (path === '/page-context' || path === '/conversations') && data.error === 'Not found.') {
+        throw Object.assign(new Error('The local helper needs an update. Stop it with Ctrl+C, run npm start again in the Xanaplan folder, then refresh page context.'), { code: 'HELPER_UPDATE_REQUIRED', status: 404 });
+      }
+      throw Object.assign(new Error(data.error ?? 'Request failed.'), { status: response.status }, data);
+    }
     return data;
   };
 }

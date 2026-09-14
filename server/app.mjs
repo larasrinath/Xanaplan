@@ -1,17 +1,21 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import { AppError, identifier } from './validation.mjs';
 import { validateLlmChoice } from './llm-settings.mjs';
 import { acceptRequest, sendJson, jsonBody } from './http.mjs';
 import { answerQuestion } from './chat.mjs';
 import { verifyAppDiscovery } from './apps.mjs';
+import { verifyPageContext } from './page-context.mjs';
+import { ConversationStore } from './conversations.mjs';
 
-export function createApp({ store, mcp, providers, port = 8766 }) {
+export function createApp({ store, mcp, providers, port = 8766, conversations = new ConversationStore(join(dirname(store.file), 'conversations')) }) {
   let activeQuestion = false;
   let testingConnection = false;
   const workspaceCache = new Map();
   const modelCache = new Map();
   const appDiscoveries = new Map();
+  const pageContexts = new Map();
   let connectionEpoch = 0;
   const connectionSettings = () => ({
     clientId: mcp.clientId() || '',
@@ -25,6 +29,17 @@ export function createApp({ store, mcp, providers, port = 8766 }) {
     res.on('close', () => { if (!res.writableEnded) controller.abort(); });
     try {
       const url = new URL(req.url, `http://127.0.0.1:${port}`);
+      if (req.method === 'GET' && url.pathname === '/conversations') return send(200, conversations.list());
+      if (url.pathname.startsWith('/conversations/')) {
+        const id = url.pathname.slice('/conversations/'.length);
+        if (req.method === 'GET') return send(200, { conversation: conversations.get(id) });
+        if (req.method === 'DELETE') {
+          const body = await jsonBody(req);
+          if (activeQuestion) throw new AppError('Wait for the current answer before deleting a conversation.', 409);
+          conversations.remove(id, body.revision);
+          return send(200, { removed: true });
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/status') {
         const aiStatus = await providers.status();
         return send(200, { local: true, readOnly: true, mcpAvailable: mcp.available(), anaplanConfigured: Boolean(mcp.clientId()), ...aiStatus });
@@ -49,7 +64,7 @@ export function createApp({ store, mcp, providers, port = 8766 }) {
         const body = await jsonBody(req);
         store.saveConnection(body.clientId);
         connectionEpoch++;
-        await mcp.reset(); workspaceCache.clear(); modelCache.clear(); appDiscoveries.clear();
+        await mcp.reset(); workspaceCache.clear(); modelCache.clear(); appDiscoveries.clear(); pageContexts.clear();
         return send(200, { saved: true, connection: connectionSettings() });
       }
       if (req.method === 'GET' && url.pathname === '/workspaces') {
@@ -65,6 +80,16 @@ export function createApp({ store, mcp, providers, port = 8766 }) {
       }
       if (req.method === 'GET' && url.pathname === '/models') return send(200, { models: store.list() });
       if (req.method === 'GET' && url.pathname === '/apps') return send(200, { apps: store.listApps(), legacyModelCount: store.list().length });
+      if (req.method === 'POST' && url.pathname === '/page-context') {
+        const input = await jsonBody(req), app = store.getApp(input.appKey), epoch = connectionEpoch;
+        const context = await verifyPageContext({ app, input, mcp, signal: controller.signal });
+        if (epoch !== connectionEpoch || store.getApp(app.key).revision !== app.revision) throw new AppError('The app or connection changed. Refresh page context.', 409);
+        const ticket = randomUUID(), expires = Date.now() + 5 * 60 * 1000;
+        for (const [key, value] of pageContexts) if (value.expires < Date.now()) pageContexts.delete(key);
+        if (pageContexts.size >= 30) pageContexts.delete(pageContexts.keys().next().value);
+        pageContexts.set(ticket, { context, expires, appKey: app.key, revision: app.revision });
+        return send(200, { context, ticket, expires });
+      }
       if (req.method === 'POST' && url.pathname === '/app-discovery') {
         if (activeQuestion) throw new AppError('Wait for the current answer before discovering app models.', 409);
         const epoch = connectionEpoch;
@@ -120,12 +145,27 @@ export function createApp({ store, mcp, providers, port = 8766 }) {
       if (req.method === 'POST' && url.pathname === '/chat') {
         const input = await jsonBody(req);
         if (activeQuestion || testingConnection) throw new AppError('Another question or connection test is running. Wait for it to finish.', 409);
+        let pageContext;
+        if (input.appKey) {
+          const saved = pageContexts.get(input.pageTicket);
+          if (!saved || saved.expires < Date.now() || saved.appKey !== input.appKey || saved.revision !== input.revision) throw new AppError('Refresh page context before asking. Its verification is missing or expired.', 409);
+          pageContext = structuredClone(saved.context);
+        }
         const provider = providers.select(input);
+        const scope = input.appKey ? store.getApp(input.appKey) : store.get(input.modelKey);
+        const conversation = conversations.prepare({ input, scope, pageContext, llm: provider.settings });
+        // Saved history is authoritative and can only be continued within the
+        // same verified scope. Never import an archive into a different page.
+        input.history = conversation.messages.slice(-8).map(({ role, text }) => ({ role, text }));
         activeQuestion = true;
         try {
-          const answer = await answerQuestion({ store, mcp, provider, input, signal: controller.signal });
+          const answer = await answerQuestion({ store, mcp, provider, input, pageContext, signal: controller.signal });
           provider.check();
-          return send(200, { ...answer, llm: { provider: provider.settings.provider, model: provider.settings.model, revision: provider.settings.revision } });
+          if (controller.signal.aborted) throw new AppError('Question cancelled.', 499);
+          let saved, historyError;
+          try { saved = conversations.saveTurn(conversation, input.question.trim(), answer); }
+          catch (error) { historyError = error.message; }
+          return send(200, { ...answer, conversation: saved, ...(historyError ? { historyError } : {}), llm: { provider: provider.settings.provider, model: provider.settings.model, revision: provider.settings.revision } });
         }
         finally { activeQuestion = false; }
       }

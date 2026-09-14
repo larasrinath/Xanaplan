@@ -43,3 +43,16 @@ test('the panel API distinguishes cancellation from an unreachable helper', asyn
   await assert.rejects(api('/status'), { message: 'Cannot reach the local helper. Run npm start in the Xanaplan folder, then select Check.' });
   await assert.rejects(api('/chat', { signal: AbortSignal.abort() }), { name: 'AbortError', message: 'Cancelled' });
 });
+
+test('an old helper missing page context gives restart instructions without hiding missing apps', async () => {
+  let detail = { error: 'Not found.' };
+  const api = createLocalApi(() => pairing, { fetchImpl: async () => Response.json(detail, { status: 404 }) });
+  await assert.rejects(api('/page-context', { method: 'POST', body: {} }), error => {
+    assert.equal(error.code, 'HELPER_UPDATE_REQUIRED'); assert.equal(error.status, 404);
+    assert.match(error.message, /Ctrl\+C.*npm start.*refresh page context/);
+    return true;
+  });
+  await assert.rejects(api('/another-endpoint'), { message: 'Not found.', status: 404 });
+  detail = { error: 'This app is not enabled. Add it in Admin first.' };
+  await assert.rejects(api('/page-context', { method: 'POST', body: {} }), { message: detail.error, status: 404 });
+});

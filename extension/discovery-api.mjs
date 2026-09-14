@@ -28,7 +28,7 @@ function requireComplete(data, count, resource) {
   }
 }
 
-async function requestJson(origin, path, resource, { signal, fetchImpl, requestTimeout, apiVersion = '1' }) {
+export async function requestJson(origin, path, resource, { signal, fetchImpl = globalThis.fetch, requestTimeout = 15000, apiVersion = '1' } = {}) {
   checkAbort(signal);
   const controller = new AbortController();
   const abort = () => controller.abort();

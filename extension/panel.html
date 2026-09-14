@@ -17,7 +17,28 @@
   <div id="notice" role="status" hidden></div>
   <main>
     <section id="assistant-view" aria-label="Assistant">
-      <div class="model-bar"><label for="chat-app">CONVERSATION APP</label><select id="chat-app"><option value="">No enabled apps</option></select><div class="model-meta"><span id="context-note">Set up your first app in Admin.</span><span>Read only</span></div><p id="active-ai" class="active-ai">AI is managed in Admin.</p></div>
+      <div class="chat-toolbar">
+        <button id="history-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="chat-history">History</button>
+        <span id="chat-save-status" role="status"></span>
+        <button id="new-chat" class="text-button" type="button">+ New chat</button>
+      </div>
+      <section id="chat-history" class="chat-history" aria-label="Saved chats" hidden>
+        <div class="history-heading"><h2>Saved chats</h2><button id="history-refresh" class="text-button" type="button">Refresh</button></div>
+        <label for="history-search" class="sr-only">Search saved chats</label><input id="history-search" type="search" placeholder="Search chats, apps or pages…" autocomplete="off" maxlength="160">
+        <p id="history-status" role="status">Saved on this computer.</p><ul id="history-list"></ul>
+      </section>
+      <section id="saved-chat-heading" class="saved-chat-heading" hidden>
+        <button id="history-back" class="text-button" type="button">← Back to current chat</button>
+        <h2 id="saved-chat-title"></h2><p id="saved-chat-context"></p>
+        <p>This conversation uses an earlier context. You can review its messages and sources here.</p>
+      </section>
+      <section id="live-context" class="page-context compact-context" aria-label="Chat context">
+        <div class="context-row"><label for="chat-app">App</label><select id="chat-app"><option value="">No enabled apps</option></select></div>
+        <div class="context-row"><label for="chat-page">Page</label><select id="chat-page"><option value="">Follow current tab</option></select><button id="refresh-page" class="text-button" type="button" aria-label="Refresh page context" title="Refresh page context">↻</button></div>
+        <div id="page-model-field" hidden><label for="page-model">Model</label><select id="page-model"><option value="">Use detected model</option></select></div>
+        <p id="page-status" role="status">Select an enabled app.</p>
+        <p id="page-selections" hidden></p>
+      </section>
       <div id="conversation" aria-live="polite" aria-relevant="additions">
         <div id="welcome" class="welcome">
           <div class="eyebrow">A clearer view of your business</div>
@@ -37,7 +58,7 @@
         <textarea id="question" rows="3" maxlength="4000" placeholder="Ask about your business…" required></textarea>
         <div class="composer-footer"><span id="question-status">Answers use your selected app.</span><button id="cancel-question" type="button" hidden>Stop</button><button id="send" class="primary" type="submit" disabled>Ask ↑</button></div>
       </form>
-      <p class="privacy-note">Business context and relevant data are sent to your configured AI connection when you ask.</p>
+      <p id="chat-privacy" class="privacy-note">Chats are saved on this computer. Questions and relevant data are sent to your configured AI connection.</p>
     </section>
     <section id="admin-view" aria-label="Admin" hidden>
       <div class="section-heading"><div><div class="eyebrow">Your local setup</div><h1>Admin setup</h1></div></div>

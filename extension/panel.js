@@ -3,11 +3,14 @@ import { safeSignInUrl, openAnaplanSignIn } from './anaplan-auth.mjs';
 import { createSearchableSelect, matchesSearch } from './searchable-select.mjs';
 import { createLocalApi } from './local-api.mjs';
 import { renderConversation } from './conversation-view.mjs';
+import { createPagePanel } from './page-panel.mjs';
+import { ChatHistory, renderChatHistory } from './chat-history.mjs';
 
 const $ = id => document.getElementById(id);
 let connection = null;
 const api = createLocalApi(() => connection);
 let apps = [], selectedKey = '', editing = null, busy = false, controller = null, loadSequence = 0;
+let questionCancelled = false;
 let connectionStatus = null;
 let anaplanSettings = null, anaplanDirty = false, connectionSaving = false;
 let anaplanBusy = false, anaplanState = 'idle', anaplanMessage = '', accessRequest = null;
@@ -16,7 +19,10 @@ let llmActivity = '';
 const providerNames = { openai: 'OpenAI', claude: 'Claude' };
 const llmDrafts = { openai: '', claude: '' };
 let draftProvider = 'claude';
-const conversations = new Map();
+const chatHistory = new ChatHistory({ api, changed: () => renderMessages() });
+const pageContext = createPagePanel({ document, api, changed: () => {
+  controller?.abort(); renderMessages();
+} });
 const contextDrafts = new Map();
 let draftSelection = '';
 let tenantCatalog = [], appCatalog = [], appDiscovery = null, discoveryController = null, discoveryBusy = false, savingApp = false;
@@ -118,20 +124,21 @@ function options(element, items, prompt) {
   for (const item of items) element.add(new Option(item.name, item.id));
 }
 function currentApp() { return apps.find(app => app.key === selectedKey); }
-function currentThread() {
+function currentScopeKey() {
   const app = currentApp();
-  if (!app) return [];
-  const key = `${app.key}:${app.revision}:ai-${llmSettings?.revision ?? 0}`;
-  if (!conversations.has(key)) conversations.set(key, []);
-  return conversations.get(key);
+  if (!app || !pageContext.state.context || !llmSettings) return '';
+  return `${app.key}:${app.revision}:ai-${llmSettings.revision}:page-${pageContext.state.context.fingerprint}`;
 }
+function currentThread() { return chatHistory.current(currentScopeKey()); }
 function updateComposer() {
-  $('send').disabled = busy || savingApp || llmBusy || !currentApp() || !connectionStatus?.provider?.loggedIn;
+  const thread = currentThread();
+  $('send').disabled = busy || savingApp || llmBusy || chatHistory.loading || chatHistory.listOpen || Boolean(chatHistory.viewed) || !chatHistory.ready || !thread?.loaded || Boolean(thread?.loadError || thread?.saveError) || !currentApp() || !connectionStatus?.provider?.loggedIn || !pageContext.state.ticket || pageContext.state.loading;
   $('question').disabled = busy || savingApp || !currentApp();
   $('chat-app').disabled = busy || savingApp;
   $('cancel-question').hidden = !busy;
-  $('question-status').textContent = savingApp ? 'Saving app context…' : busy ? 'Reading your app and preparing an answer…' : !currentApp() ? 'Enable an app in Admin to begin.' : !connectionStatus?.provider?.loggedIn ? 'Connect the AI provider in Admin to ask questions.' : llmBusy ? 'Checking AI settings…' : 'Answers use your selected app.';
-  $('active-ai').textContent = llmSettings ? `${providerNames[llmSettings.provider]} · ${llmSettings.model || 'Provider default'} · Managed in Admin` : 'AI is managed in Admin.';
+  $('question-status').textContent = savingApp ? 'Saving app…' : busy ? 'Preparing your answer…' : !currentApp() ? 'Enable an app in Admin to begin.' : !connectionStatus?.provider?.loggedIn ? 'Connect the AI provider in Admin to ask questions.' : llmBusy ? 'Checking AI settings…' : !pageContext.state.ticket ? 'Choose a page to begin.' : 'Ask about this page.';
+  if (!busy && (thread?.loadError || !chatHistory.ready)) $('question-status').textContent = thread?.loadError || chatHistory.error || 'Loading saved chats…';
+  if (!busy && thread?.saveError) $('question-status').textContent = 'This answer was not saved. Keep it open to copy it, then start a new chat.';
 }
 function renderConnectionDot(id, state, description) {
   const dot = $(id);
@@ -168,13 +175,22 @@ function applyLlm(settings, force = false) {
   renderLlm(); renderMessages();
 }
 function renderMessages() {
-  renderConversation(document, { messages: currentThread(), hasApps: apps.length > 0, app: currentApp() });
+  renderConversation(document, { messages: chatHistory.viewed?.messages || currentThread()?.messages || [], hasApps: apps.length > 0 });
+  renderChatHistory(document, chatHistory, { scopeKey: currentScopeKey(), busy,
+    open: id => chatHistory.open(id, currentScopeKey),
+    remove: async record => {
+      if (!confirm(`Delete “${record.title}” from saved chat history?`)) return;
+      try { await chatHistory.remove(record.id, record.revision); } catch (error) { showError(error); }
+    },
+  });
   updateComposer();
 }
 function renderApps() {
   options($('chat-app'), apps.map(app => ({ id: app.key, name: app.name })), apps.length ? 'Select an app' : 'No enabled apps');
   if (!apps.some(app => app.key === selectedKey)) selectedKey = apps[0]?.key ?? '';
   $('chat-app').value = selectedKey;
+  $('chat-app').title = currentApp()?.name || 'Conversation app';
+  void pageContext.setApp(currentApp());
   renderEnabledApps();
   renderMessages();
 }
@@ -395,6 +411,14 @@ async function refreshConnection() {
   catch (error) { $('anaplan-setup').open = true; connectionResult(error.message, 'error'); throw error; }
 }
 on('assistant-tab', 'click', () => view('assistant'));
+on('history-toggle', 'click', async () => {
+  chatHistory.listOpen = !chatHistory.listOpen; renderMessages();
+  if (chatHistory.listOpen) { await chatHistory.refresh(); $('history-search').focus(); }
+});
+on('history-refresh', 'click', () => chatHistory.refresh());
+on('history-search', 'input', renderMessages);
+on('history-back', 'click', () => chatHistory.back());
+on('new-chat', 'click', () => { chatHistory.newChat(currentScopeKey()); $('question').value = ''; $('question').focus(); });
 on('admin-tab', 'click', () => view('admin'));
 on('first-app', 'click', async () => { view('admin'); await addApp(); });
 on('add-app', 'click', addApp);
@@ -422,7 +446,7 @@ on('refresh-discovery', 'click', () => {
 on('cancel-discovery', 'click', () => { cancelDiscovery(); discoveryStatus('Cancelled. Select Refresh to retry.'); });
 on('connect-anaplan', 'click', () => checkAnaplanAccess({ openSignIn: anaplanState !== 'login' }));
 on('refresh-status', 'click', async () => { await refreshConnection(); await refreshStatus(); await loadApps(); notice('Connection status updated.'); });
-on('chat-app', 'change', () => { selectedKey = $('chat-app').value; renderMessages(); });
+on('chat-app', 'change', async () => { selectedKey = $('chat-app').value; await pageContext.setApp(currentApp()); renderMessages(); });
 on('context', 'input', countContext);
 on('import-context', 'click', () => $('context-file').click());
 on('context-file', 'change', async () => {
@@ -498,25 +522,34 @@ on('llm-form', 'submit', async event => {
   } finally { llmBusy = false; llmActivity = ''; renderLlm(); }
 });
 document.querySelectorAll('[data-question]').forEach(button => button.addEventListener('click', () => { $('question').value = button.dataset.question; $('question').focus(); }));
-on('cancel-question', 'click', () => controller?.abort());
+on('cancel-question', 'click', () => { questionCancelled = true; if (controller) controller.abort(); else pageContext.invalidate(); });
 on('question', 'keydown', event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!$('send').disabled) $('question-form').requestSubmit(); } });
 on('question-form', 'submit', async event => {
-  event.preventDefault(); if (busy || savingApp || llmBusy || !currentApp() || !llmSettings) return;
+  event.preventDefault(); if ($('send').disabled || busy || savingApp || llmBusy || !currentApp() || !llmSettings) return;
   const app = currentApp(), question = $('question').value.trim(); if (!question) return;
-  const thread = currentThread(), history = thread.slice(-8).map(({ role, text }) => ({ role, text }));
-  thread.push({ role: 'user', text: question }); $('question').value = ''; busy = true; controller = new AbortController(); notice(''); renderMessages(); renderLlm();
+  let thread, inserted = false;
+  busy = true; questionCancelled = false; notice(''); updateComposer();
   try {
-    const result = await api('/chat', { method: 'POST', body: { appKey: app.key, revision: app.revision, llmRevision: llmSettings.revision, question, history }, signal: controller.signal });
-    thread.push({ role: 'assistant', text: result.answer, sources: result.sources, revision: result.revision });
+    const snapshot = await pageContext.snapshot();
+    if (questionCancelled) throw new DOMException('Question stopped', 'AbortError');
+    thread = currentThread();
+    if (!thread?.loaded || thread.loadError || thread.saveError) throw new Error('Wait for saved chats to load, or start a new chat.');
+    thread.messages.push({ role: 'user', text: question }); inserted = true; $('question').value = '';
+    controller = new AbortController(); renderMessages(); renderLlm();
+    const result = await api('/chat', { method: 'POST', body: { appKey: app.key, revision: app.revision, llmRevision: llmSettings.revision, pageTicket: snapshot.ticket, question, conversationId: thread.id, conversationRevision: thread.revision }, signal: controller.signal });
+    if (controller.signal.aborted || pageContext.state.context?.fingerprint !== snapshot.context.fingerprint) throw new DOMException('Context changed', 'AbortError');
+    thread.messages.push({ role: 'assistant', text: result.answer, sources: result.sources, revision: result.revision, pageContext: result.pageContext });
+    chatHistory.saved(thread, result);
+    if (result.historyError) notice(`${result.historyError} This answer remains visible in this panel.`, true);
   } catch (error) {
-    thread.pop(); $('question').value = question;
+    if (inserted) thread.messages.pop(); if (!$('question').value) $('question').value = question;
     if (error.name === 'AbortError') notice('Question stopped. You can edit it and try again.'); else showError(error);
   } finally { busy = false; controller = null; renderMessages(); renderLlm(); $('messages').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 });
 
 async function init() {
   try { connection = (await import('./local-config.js')).connection; } catch {}
-  const results = await Promise.allSettled([refreshStatus(), loadApps(), refreshConnection()]);
+  const results = await Promise.allSettled([refreshStatus(), loadApps(), refreshConnection(), chatHistory.refresh()]);
   for (const result of results) if (result.status === 'rejected') showError(result.reason);
   // Opening an app is optional. If one is already active, preselect a unique saved match.
   try {
@@ -527,5 +560,6 @@ async function init() {
     const matching = apps.filter(app => app.appId === appId && app.origin === discoveryOrigin);
     if (matching.length === 1) { selectedKey = matching[0].key; renderApps(); }
   } catch {}
+  await pageContext.setApp(currentApp());
 }
 await init();

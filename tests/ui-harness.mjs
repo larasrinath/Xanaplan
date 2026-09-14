@@ -1,130 +1,110 @@
-// Synthetic UI acceptance harness. No credentials, real models, MCP, or AI calls.
+// Isolated synthetic UI harness. Production helper routes, no real MCP or AI.
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../server/store.mjs';
+import { createApp } from '../server/app.mjs';
+import { AppError } from '../server/validation.mjs';
+import { request } from './http-client.mjs';
+import { app, appId, pageId, secondPageId, model, board, catalog, observation, syntheticMcp } from './fixtures/page.mjs';
+
 const extension = new URL('../extension/', import.meta.url);
 const port = Number(process.env.XANAPLAN_UI_PORT ?? 8768);
-let models = [];
-let apps = [];
-let llm = { provider: 'claude', model: '', revision: 1, models: { claude: '', openai: '' } };
-let anaplanConnection = { clientId: 'synthetic-detected-client', source: 'detected', savedAt: null };
-let authMode = 'connected';
-let discoveryMode = 'available';
-let aiMode = 'connected';
+const directory = mkdtempSync(join(tmpdir(), 'xanaplan-ui-'));
+const store = new Store(directory), mcp = syntheticMcp();
+let authMode = 'connected', discoveryMode = 'available', pageMode = 'current';
+mcp.clientId = () => 'synthetic-client'; mcp.available = () => true; mcp.reset = async () => {};
+mcp.discover = async tool => {
+  if (authMode === 'login') throw new AppError('Synthetic sign-in required.', 401, { code: 'ANAPLAN_LOGIN', url: 'https://iam.anaplan.com/test-only', userCode: 'SYNTHETIC' });
+  if (authMode === 'error') throw new AppError('Synthetic connection failure.', 502);
+  return { items: tool === 'show_workspaces' ? [{ id: model.workspaceId, name: model.workspaceName }] : [{ id: model.modelId, name: model.name }], incomplete: false };
+};
+const providerStatus = { installed: true, loggedIn: true, method: 'SYNTHETIC UI TEST' };
+const providers = {
+  status: async () => ({ llm: store.getLlm(), provider: { ...providerStatus, id: store.getLlm().provider }, connections: { openai: providerStatus, claude: providerStatus } }),
+  test: async body => ({ success: true, provider: body.provider, model: body.model, message: 'Synthetic provider test passed.' }),
+  select: () => ({ settings: store.getLlm(), check() {}, decide: async (payload, signal) => {
+    await new Promise((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(new AppError('Question cancelled.', 499)); };
+      const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, 500);
+      signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort();
+    });
+    if (!payload.evidence.length) {
+      const source = payload.pageContext.sources.find(item => !item.unsupported);
+      return { kind: 'read', tool: 'read_cells', arguments: JSON.stringify({ modelKey: model.key, sourceId: source.id, moduleId: source.moduleId, viewId: source.viewId,
+        ...(payload.question.includes('Feb 26') ? { contextOverrides: [{ dimensionId: '501', itemName: 'Feb 26', questionQuote: 'Feb 26' }] } : {}),
+      }) };
+    }
+    const evidence = payload.evidence[0];
+    return { kind: 'answer', answer: evidence.error ? `Synthetic test: ${evidence.error}` : `Synthetic example: Revenue is 120. ${evidence.effectiveFilters.map(filter => `${filter.dimensionName}: ${filter.label}`).join(' · ')}. No live Anaplan or AI calls were made.`, sourceIds: [evidence.id] };
+  } }),
+};
+const helper = createApp({ store, mcp, providers });
 const send = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+const senderShim = `
+import { createDiscoveryService } from './discovery-background.mjs';
+import { createPageService } from './page-background.mjs';
+import { readAnaplanDiscovery } from './discovery-api.mjs';
+import { readPageDefinition } from './page-api.mjs';
+const fixtureFetch = (url, options) => fetch('/test/anaplan?route=' + encodeURIComponent(new URL(url).pathname), {signal:options.signal});
+const runtime = {id:'synthetic-extension', getURL:path=>'chrome-extension://synthetic-extension/'+path};
+const sender = {id:runtime.id,url:runtime.getURL('panel.html')};
+const discoveryService = createDiscoveryService({runtime},{read:(input,options)=>readAnaplanDiscovery(input,{...options,fetchImpl:fixtureFetch})});
+const pageService = createPageService({runtime},{read:(input,options)=>readPageDefinition(input,{...options,fetchImpl:fixtureFetch}),observe:async()=>{const response=await fetch('/test/page');return response.json();}});
+const syntheticChrome = {runtime:{sendMessage:async message=>{try{return await (message.target==='page-background'?pageService:discoveryService)(message,sender);}catch(error){return {ok:false,error:error.message};}}}};
+`;
+const assets = new Set(['panel.html', 'panel.js', 'panel.css', 'local-api.mjs', 'conversation-view.mjs', 'chat-history.mjs', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs', 'page-api.mjs', 'page-observer.mjs', 'page-background.mjs', 'page-panel.mjs']);
 const server = createServer(async (req, res) => {
   if (req.headers.host !== `127.0.0.1:${port}`) return send(res, 403, {});
-  const url = new URL(req.url, `http://127.0.0.1:${port}`);
   res.setHeader('Cache-Control', 'no-store');
-  if (url.pathname === '/test/auth' && req.method === 'POST') {
-    let input = ''; for await (const chunk of req) input += chunk;
-    const mode = new URLSearchParams(input).get('mode');
-    if (!['connected', 'login', 'error'].includes(mode)) return send(res, 400, {});
-    authMode = mode;
-    return send(res, 200, { mode });
-  }
-  if (url.pathname === '/test/discovery') {
-    if (req.method === 'POST') {
-      let input = ''; for await (const chunk of req) input += chunk;
-      const mode = new URLSearchParams(input).get('mode');
-      if (!['available', 'unavailable'].includes(mode)) return send(res, 400, {});
-      discoveryMode = mode;
+  const url = new URL(req.url, `http://127.0.0.1:${port}`);
+  try {
+    let input = ''; for await (const chunk of req) { input += chunk; if (input.length > 180000) return send(res, 413, {}); }
+    if (url.pathname.startsWith('/api/')) {
+      const result = await request(helper, store, req.method, url.pathname.slice(4) + url.search, input ? JSON.parse(input) : undefined);
+      return send(res, result.status, result.body);
     }
-    return send(res, 200, { mode: discoveryMode });
-  }
-  if (url.pathname.startsWith('/api/')) {
-    let input = ''; for await (const chunk of req) input += chunk;
-    const body = input ? JSON.parse(input) : {};
-    const fakeStatus = { installed: aiMode !== 'unavailable', loggedIn: aiMode === 'connected', method: 'SYNTHETIC UI TEST' };
-    if (url.pathname === '/api/connection' && req.method === 'GET') return send(res, 200, { connection: anaplanConnection });
-    if (url.pathname === '/api/connection' && req.method === 'POST') {
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      if (body.clientId === 'synthetic-save-error') return send(res, 500, { error: 'Synthetic save failure. Please retry.' });
-      if (!body.clientId?.trim()) return send(res, 400, { error: 'Anaplan OAuth client ID is required.' });
-      anaplanConnection = { clientId: body.clientId.trim(), source: 'saved', savedAt: new Date().toISOString() };
-      return send(res, 200, { saved: true, connection: anaplanConnection });
+    if (url.pathname === '/test/auth') { authMode = new URLSearchParams(input).get('mode') || authMode; return send(res, 200, { mode: authMode }); }
+    if (url.pathname === '/test/discovery') { discoveryMode = new URLSearchParams(input).get('mode') || discoveryMode; return send(res, 200, { mode: discoveryMode }); }
+    if (url.pathname === '/test/page') {
+      pageMode = new URLSearchParams(input).get('mode') || pageMode;
+      const snapshot = structuredClone(observation);
+      if (pageMode === 'february') snapshot.selections[0].label = 'Feb 26';
+      if (pageMode === 'unknown') snapshot.selections = [];
+      if (pageMode === 'outside') snapshot.url = 'https://example.com';
+      return send(res, 200, snapshot);
     }
-    if (url.pathname === '/api/status') return send(res, 200, { local: true, readOnly: true, mcpAvailable: true, anaplanConfigured: true, llm, provider: { ...fakeStatus, id: llm.provider, label: llm.provider === 'openai' ? 'OpenAI' : 'Claude', model: llm.model }, connections: { openai: fakeStatus, claude: fakeStatus } });
-    if (url.pathname === '/api/llm' && req.method === 'GET') return send(res, 200, { llm });
-    if (url.pathname === '/api/llm' && req.method === 'POST') {
-      if (body.revision !== llm.revision) return send(res, 409, { error: 'AI settings changed.' });
-      llm = { ...llm, provider: body.provider, model: body.model.trim(), models: { ...llm.models, [body.provider]: body.model.trim() }, revision: llm.revision + 1 };
-      return send(res, 200, { llm });
-    }
-    if (url.pathname === '/api/llm/test') return send(res, 200, { success: true, provider: body.provider, model: body.model, message: 'Synthetic connection test passed. No AI provider was contacted.' });
-    if (url.pathname === '/api/workspaces') {
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      if (authMode === 'login') return send(res, 401, { code: 'ANAPLAN_LOGIN', error: 'Sign in to Anaplan, then select “Check connection” to continue.', url: 'https://iam.anaplan.com/test-only', userCode: 'SYNTHETIC' });
-      if (authMode === 'error') return send(res, 502, { error: 'Synthetic Anaplan connection failure. Please retry.' });
-      return send(res, 200, { items: [{ id: 'testworkspace', name: 'Synthetic workspace' }], incomplete: false });
-    }
-    if (url.pathname === '/api/apps' && req.method === 'GET') return send(res, 200, { apps, legacyModelCount: 0 });
-    if (url.pathname === '/api/app-discovery') {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      return send(res, 200, { ticket: 'synthetic-ticket', discovery: { appId: body.appId, origin: body.origin, name: body.name, tenantId: body.tenantId, tenantName: body.tenantName, models: [
-        { key: 'testworkspace:testmodel', workspaceId: 'testworkspace', workspaceName: 'Synthetic workspace', modelId: 'testmodel', name: 'Synthetic sales model' },
-        { key: 'testworkspace:forecastmodel', workspaceId: 'testworkspace', workspaceName: 'Synthetic workspace', modelId: 'forecastmodel', name: 'Synthetic forecast model' },
-      ] } });
-    }
-    if (url.pathname === '/api/apps' && req.method === 'POST') {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      const existing = apps[0];
-      if ((body.revision ?? 0) !== (existing?.revision ?? 0)) return send(res, 409, { error: 'App context changed.' });
-      const app = { key: 'https://us1a.app.anaplan.com|testtenant|00000000-0000-0000-0000-000000000001', appId: '00000000-0000-0000-0000-000000000001', origin: 'https://us1a.app.anaplan.com', tenantId: 'testtenant', tenantName: 'Synthetic tenant', name: 'Synthetic business planning', context: body.context, revision: (existing?.revision ?? 0) + 1, savedAt: new Date().toISOString(), models: body.modelKeys.map(key => ({ key, workspaceId: 'testworkspace', workspaceName: 'Synthetic workspace', modelId: key.split(':')[1], name: key.endsWith(':testmodel') ? 'Synthetic sales model' : 'Synthetic forecast model' })) };
-      apps = [app]; return send(res, 200, { app });
-    }
-    if (url.pathname.startsWith('/api/apps/') && req.method === 'DELETE') { apps = []; return send(res, 200, { removed: true }); }
-    if (url.pathname === '/api/available-models') return send(res, 200, { items: [{ id: 'testmodel', name: 'Synthetic sales model' }], incomplete: false });
-    if (url.pathname === '/api/models' && req.method === 'GET') return send(res, 200, { models });
-    if (url.pathname === '/api/models' && req.method === 'POST') {
-      const existing = models[0];
-      if ((body.revision ?? 0) !== (existing?.revision ?? 0)) return send(res, 409, { error: 'Context changed.' });
-      const model = { ...body, key: `${body.workspaceId}:${body.modelId}`, name: 'Synthetic sales model', workspaceName: 'Synthetic workspace', revision: (existing?.revision ?? 0) + 1, savedAt: new Date().toISOString() }; models = [model]; return send(res, 200, { model });
-    }
-    if (url.pathname.startsWith('/api/models/') && req.method === 'DELETE') { models = []; return send(res, 200, { removed: true }); }
-    if (url.pathname === '/api/chat') return send(res, 200, { answer: 'SYNTHETIC UI TEST — no live data or AI was used.\n\nRevenue of USD 120k is USD 20k (20%) above a USD 100k budget for this test period.', appKey: body.appKey, revision: body.revision, sources: [{ id: 1, modelName: 'Synthetic sales model', tool: 'read_cells', arguments: { moduleId: 'testmodule', viewId: 'testview', maxRows: 500 }, readAt: new Date().toISOString(), partial: false, rowLimit: 500 }] });
-    return send(res, 404, {});
-  }
-  if (url.pathname === '/') {
-    if (['connected', 'signedout', 'unavailable'].includes(url.searchParams.get('ai'))) aiMode = url.searchParams.get('ai');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(`<!doctype html><html lang="en"><title>Xanaplan · SYNTHETIC UI TEST</title><body style="margin:0;background:#dfe5dc;font:12px system-ui;color:#193d37"><p style="text-align:center">SYNTHETIC UI TEST · no Anaplan connection · no AI calls</p><div style="text-align:center;margin:12px"><label for="auth-fixture">Simulated Anaplan response </label><select id="auth-fixture"><option value="connected" ${authMode === 'connected' ? 'selected' : ''}>Connected</option><option value="login" ${authMode === 'login' ? 'selected' : ''}>Sign-in needed</option><option value="error" ${authMode === 'error' ? 'selected' : ''}>Connection error</option></select><span id="fixture-status" role="status"></span></div><div style="text-align:center;margin:12px"><label for="discovery-fixture">Synthetic discovery </label><select id="discovery-fixture"><option value="available" ${discoveryMode === 'available' ? 'selected' : ''}>Available</option><option value="unavailable" ${discoveryMode === 'unavailable' ? 'selected' : ''}>Temporarily unavailable</option></select></div><iframe title="Extension panel under test" src="/panel.html" style="display:block;width:${[320,400,960].includes(Number(url.searchParams.get('width'))) ? Number(url.searchParams.get('width')) : 400}px;max-width:100%;height:calc(100vh - 100px);border:1px solid #bbcabc;margin:auto;background:#fff"></iframe><script>document.getElementById('discovery-fixture').addEventListener('change',async event=>{await fetch('/test/discovery',{method:'POST',body:new URLSearchParams({mode:event.target.value})});document.getElementById('fixture-status').textContent=' Discovery response ready.';});document.getElementById('auth-fixture').addEventListener('change', async event => {await fetch('/test/auth',{method:'POST',body:new URLSearchParams({mode:event.target.value})});document.getElementById('fixture-status').textContent=' Test response ready.';});</script></body></html>`);
-  }
-  if (url.pathname === '/local-config.js') { res.setHeader('Content-Type', 'text/javascript'); return res.end(`export const connection = {baseUrl:'http://127.0.0.1:${port}/api',token:'synthetic-test-only'};`); }
-  if (url.pathname === '/app-discovery.mjs') {
-    // Exercise the real background service and API parser with synthetic GET responses.
-    // No request below is sent to Anaplan; browser session authentication is untested here.
-    const shim = `import { createDiscoveryService } from './discovery-background.mjs';
-    import { readAnaplanDiscovery } from './discovery-api.mjs';
-    const syntheticFetch = async (url, options) => {
-      if(options.method !== 'GET' || options.credentials !== 'include') throw new Error('Unexpected synthetic request');
-      const fixture = await (await fetch('/test/discovery',{signal:options.signal})).json();
-      if(fixture.mode === 'unavailable') return new Response('Synthetic outage',{status:503});
-      await new Promise((resolve,reject) => {
-        const abort = () => {clearTimeout(timer);reject(new DOMException('Cancelled','AbortError'));};
-        const timer = setTimeout(() => {options.signal.removeEventListener('abort',abort);resolve();}, 900);
-        options.signal.addEventListener('abort',abort,{once:true});
-        if(options.signal.aborted) abort();
-      });
-      const path = new URL(url).pathname, appId = '00000000-0000-0000-0000-000000000001';
+    if (url.pathname === '/test/anaplan') {
+      if (discoveryMode === 'unavailable') return send(res, 503, {});
+      const root = '/a/springboard-definition-service';
       const bodies = {
-        '/a/springboard-platform-gateway-service/customers': {customers:[{customerGuid:'testtenant',customerName:'Synthetic tenant',selectedCustomer:true},{customerGuid:'emptytenant',customerName:'Synthetic empty tenant'}]},
-        '/a/springboard-definition-service/customer/testtenant/apps': {customerId:'testtenant',items:[{guid:appId,name:'Synthetic business planning'},{guid:'00000000-0000-0000-0000-000000000002',name:'Capital planning'},{guid:'00000000-0000-0000-0000-000000000003',name:'Supply chain'},{guid:'00000000-0000-0000-0000-000000000004',name:'Café revenue planning'}]},
-        '/a/springboard-definition-service/customer/emptytenant/apps': {customerId:'emptytenant',items:[]},
-        ['/a/springboard-definition-service/apps/'+appId]: {guid:appId,customerId:'testtenant'},
-        ['/a/springboard-definition-service/pagemodels/app/'+appId]: {pages:[{models:[{modelId:'A'.repeat(32),modelName:'Synthetic sales model',workspaceName:'Synthetic workspace'},{modelId:'B'.repeat(32),modelName:'Synthetic forecast model',workspaceName:'Synthetic workspace'}]}]},
+        '/a/springboard-platform-gateway-service/customers': { customers: [{ customerGuid: app.tenantId, customerName: app.tenantName, selectedCustomer: true }] },
+        [`${root}/customer/${app.tenantId}/apps`]: { customerId: app.tenantId, items: [{ guid: appId, name: app.name }] },
+        [`${root}/apps/${appId}`]: catalog,
+        [`${root}/pagemodels/app/${appId}`]: { pages: [{ models: [{ modelId: model.modelId, modelName: model.name, workspaceName: model.workspaceName }] }] },
+        [`${root}/boards/${pageId}`]: board,
+        [`${root}/grid-pages/${secondPageId}`]: { ...board, pageGuid: secondPageId, name: 'Costs', dataSourceId: '101', widgets: [{ widgetDefinition: board.widgets.budget }] },
       };
-      if(!Object.hasOwn(bodies,path)) throw new Error('Unexpected synthetic route');
-      return new Response(JSON.stringify(bodies[path]),{headers:{'Content-Type':'application/json'}});
-    };
-    const runtime = {id:'synthetic-extension',getURL:file=>'chrome-extension://synthetic-extension/'+file};
-    const service = createDiscoveryService({runtime},{read:(input,options)=>readAnaplanDiscovery(input,{...options,fetchImpl:syntheticFetch})});
-    const syntheticChrome = {runtime:{sendMessage:message=>service(message,{id:runtime.id,url:runtime.getURL('panel.html')})}};`;
-    res.setHeader('Content-Type', 'text/javascript');
-    return res.end(shim + readFileSync(new URL('app-discovery.mjs', extension), 'utf8').replace('chromeApi = globalThis.chrome', 'chromeApi = syntheticChrome'));
-  }
-  const file = url.pathname.slice(1);
-  if (!['panel.html', 'panel.js', 'local-api.mjs', 'conversation-view.mjs', 'panel.css', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs'].includes(file)) return send(res, 404, {});
-  res.setHeader('Content-Type', /\.(mjs|js)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
-  res.end(readFileSync(new URL(file, extension)));
+      const data = bodies[url.searchParams.get('route')]; return send(res, data ? 200 : 404, data || {});
+    }
+    if (url.pathname === '/') {
+      const width = [320, 400, 960].includes(Number(url.searchParams.get('width'))) ? Number(url.searchParams.get('width')) : 400;
+      res.setHeader('Content-Type', 'text/html');
+      return res.end(`<!doctype html><html><head><title>Xanaplan synthetic test</title></head><body style="background:#e7eeea;font:14px system-ui"><p style="text-align:center">Synthetic test only · isolated settings · no Anaplan or AI calls</p><div style="display:flex;gap:12px;justify-content:center;margin:12px"><label>Access <select data-fixture="auth"><option>connected</option><option>login</option><option>error</option></select></label><label>Discovery <select data-fixture="discovery"><option>available</option><option>unavailable</option></select></label><label>Tab context <select data-fixture="page"><option>current</option><option>february</option><option>unknown</option><option>outside</option></select></label></div><iframe title="Extension panel under test" src="/panel.html" style="display:block;width:${width}px;max-width:100%;height:calc(100vh - 110px);border:1px solid #bbcabc;margin:auto;background:white"></iframe><script>document.querySelectorAll('[data-fixture]').forEach(select=>select.addEventListener('change',()=>fetch('/test/'+select.dataset.fixture,{method:'POST',body:new URLSearchParams({mode:select.value})})));</script></body></html>`);
+    }
+    if (url.pathname === '/local-config.js') { res.setHeader('Content-Type', 'text/javascript'); return res.end(`export const connection={baseUrl:'http://127.0.0.1:${port}/api',token:'synthetic-test-only'};`); }
+    if (['/app-discovery.mjs', '/page-tracker.mjs'].includes(url.pathname)) {
+      res.setHeader('Content-Type', 'text/javascript');
+      return res.end(senderShim + readFileSync(new URL(url.pathname.slice(1), extension), 'utf8').replace('chromeApi = globalThis.chrome', 'chromeApi = syntheticChrome'));
+    }
+    const file = url.pathname.slice(1);
+    if (!assets.has(file)) return send(res, 404, {});
+    res.setHeader('Content-Type', /\.(mjs|js)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
+    return res.end(readFileSync(new URL(file, extension)));
+  } catch (error) { return send(res, 500, { error: `Synthetic harness: ${error.message}` }); }
 });
+const cleanup = () => { server.close(); rmSync(directory, { recursive: true, force: true }); };
+process.on('exit', cleanup);
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(0));
 server.listen(port, '127.0.0.1', () => console.log(`Synthetic UI harness at http://127.0.0.1:${port}. No Anaplan or AI calls.`));
