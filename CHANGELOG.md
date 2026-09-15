@@ -2,6 +2,14 @@
 
 Record user-visible changes here; the README describes current setup and behavior.
 
+## 0.9.5
+
+- Handle both Anaplan sign-ins in one Assistant recovery card: Browser session for page context and Model access for model data, each with its own status and Check connection action.
+- Show model authorization links and codes directly in the Assistant, without switching to Admin. Keep Admin’s authorization details synchronized. Validate links, render codes as text, replace expired challenges and clear them after success.
+- Preserve drafts and saved answers through page-verification and chat authorization failures. Re-verify page access after model authorization; never resend a question automatically. Keep each connection’s recovery independent.
+- Cover both sessions expiring, transient retry failures, unsafe links, saved restores and mid-answer model expiry in 161 passing automated tests. Extend the synthetic harness to apply model authorization failures to reads as well as discovery.
+- Reload the extension and reopen its side panel. No additional permissions or helper restart are required when updating from 0.9.4.
+
 ## 0.9.4
 
 - Show a dedicated Anaplan browser sign-in card with Open Anaplan and Check connection. Hide page controls, welcome prompts and the idle composer while browser sign-in is required.

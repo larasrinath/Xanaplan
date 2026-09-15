@@ -191,6 +191,60 @@ test('a stale observer failure cannot invalidate a later successful refresh', as
   assert.equal(f.tracker.state.browserSignInRequired, false);
 });
 
+test('model authorization retains its challenge through retries without treating browser access as expired', async () => {
+  const f = fixture(), api = f.tracker.api;
+  const challenge = { code: 'ANAPLAN_LOGIN', url: 'https://iam.anaplan.com/test-only', userCode: 'SYNTHETIC' };
+  let failure = Object.assign(new Error('Model authorization required'), challenge);
+  f.tracker.api = (...args) => { if (failure) throw failure; return api(...args); };
+  await f.tracker.setApp(app);
+  assert.equal(f.tracker.state.modelSignInRequired, true);
+  assert.equal(f.tracker.state.browserSignInRequired, false);
+  assert.equal(f.tracker.state.pages.length, 2); assert.ok(f.tracker.definition);
+  assert.equal(f.tracker.state.ticket, ''); assert.equal(f.tracker.state.context, null);
+  await assert.rejects(f.tracker.snapshot(), challenge);
+  failure = new Error('Temporary model connection failure');
+  await f.tracker.setApp({ ...app, revision: app.revision + 1 });
+  assert.equal(f.tracker.state.modelSignInRequired, true);
+  assert.deepEqual(f.tracker.state.modelSignIn, { url: challenge.url, userCode: challenge.userCode });
+  failure = null; await f.tracker.refresh();
+  assert.equal(f.tracker.state.modelSignInRequired, false); assert.equal(f.tracker.state.modelSignIn, null);
+  assert.doesNotMatch(JSON.stringify(await f.tracker.snapshot()), /SYNTHETIC|test-only|modelSignIn/);
+});
+
+test('each Anaplan connection recovers independently and unsafe authorization URLs are discarded', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  f.tracker.setError(Object.assign(new Error('Browser sign-in'), { code: 'ANAPLAN_BROWSER_LOGIN' }));
+  f.tracker.requireModelSignIn(Object.assign(new Error('Model sign-in'), { code: 'ANAPLAN_LOGIN', url: 'javascript:alert(1)', userCode: 'X'.repeat(300) }));
+  assert.equal(f.tracker.state.browserSignInRequired, true); assert.equal(f.tracker.state.modelSignInRequired, true);
+  assert.equal(f.tracker.state.modelSignIn.url, null); assert.equal(f.tracker.state.modelSignIn.userCode.length, 200);
+  f.tracker.modelAccessConnected();
+  assert.equal(f.tracker.state.browserSignInRequired, true); assert.equal(f.tracker.state.modelSignInRequired, false);
+  assert.equal(f.tracker.state.modelSignIn, null); assert.equal(f.tracker.state.ticket, '');
+  await f.tracker.refresh(); assert.ok(f.tracker.state.ticket); assert.equal(f.tracker.state.browserSignInRequired, false);
+});
+
+test('model sign-in failure during a saved restore invalidates old access and forwards the challenge', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  const challenge = { code: 'ANAPLAN_LOGIN', url: 'https://iam.anaplan.com/test-only', userCode: 'SAVED-TEST' };
+  f.tracker.api = () => { throw Object.assign(new Error('Model sign-in required'), challenge); };
+  await assert.rejects(f.tracker.restoreSaved(app, { id: 'saved', revision: 1, page: { id: secondPageId }, messages: [] }), challenge);
+  assert.equal(f.tracker.state.ticket, ''); assert.equal(f.tracker.state.context, null);
+  assert.equal(f.tracker.state.mode, 'follow'); assert.equal(f.tracker.state.loading, false);
+  assert.equal(f.tracker.state.modelSignInRequired, true); assert.equal(f.tracker.state.modelSignIn.userCode, 'SAVED-TEST');
+});
+
+test('superseded model authorization failures cannot replace verified context', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  const api = f.tracker.api, pending = Promise.withResolvers();
+  f.tracker.api = () => pending.promise;
+  const old = f.tracker.refresh(); await new Promise(resolve => setImmediate(resolve));
+  f.tracker.api = api; await f.tracker.choose(secondPageId);
+  pending.reject(Object.assign(new Error('Stale sign-in'), { code: 'ANAPLAN_LOGIN', userCode: 'OLD' }));
+  await old;
+  assert.equal(f.tracker.state.context.page.id, secondPageId);
+  assert.equal(f.tracker.state.modelSignInRequired, false); assert.equal(f.tracker.state.modelSignIn, null);
+});
+
 test('browser sign-in failure while restoring a saved chat invalidates expired access', async () => {
   const f = fixture(); await f.tracker.setApp(app);
   const read = f.tracker.read;

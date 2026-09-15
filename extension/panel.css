@@ -164,7 +164,16 @@ h2 { font-size: 15px; font-weight: 650; letter-spacing: -.1px; }
 .sign-in-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; margin-top: 22px; }
 .sign-in-actions a { font-size: 12px; }
 .browser-sign-in .sign-in-note { margin-top: 24px; font-size: 11px; color: var(--faint); }
-.browser-sign-in #browser-sign-in-status { font-size: 12px; }
+.browser-sign-in #browser-sign-in-status, .browser-sign-in #model-sign-in-status { font-size: 12px; overflow-wrap: anywhere; }
+.sign-in-step { margin-top: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.sign-in-step-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; }
+.sign-in-step h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.sign-in-step p { margin-top: 7px; font-size: 12px; }
+.sign-in-step .sign-in-actions { margin-top: 14px; }
+.sign-in-state { font-size: 10px; color: var(--muted); }
+.sign-in-state[data-state="required"] { color: var(--warn); }
+.sign-in-state[data-state="ready"] { color: var(--accent-strong); }
+#model-sign-in-code { font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
 .browser-sign-in[data-has-chat="true"] { max-width: 760px; margin: 12px auto 24px; padding: 18px; }
 .browser-sign-in[data-has-chat="true"] .sign-in-icon { display: none; }
 .browser-sign-in[data-has-chat="true"] h2 { font-size: 18px; }

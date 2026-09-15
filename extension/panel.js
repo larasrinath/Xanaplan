@@ -47,7 +47,13 @@ const pageContext = createPagePanel({ document, api,
     const matches = apps.filter(app => app.origin === page.origin && app.appId === page.appId);
     return matches.length === 1 ? matches[0] : null;
   },
-  changed: () => {
+  changed: state => {
+    if (state.errorCode === 'ANAPLAN_LOGIN') showModelSignIn(state.modelSignIn);
+    else if (state.ticket) {
+      anaplanState = 'connected'; anaplanMessage = 'Connected';
+      $('auth').hidden = true; $('auth-link').removeAttribute('href'); $('auth-detail').textContent = '';
+      renderAnaplan();
+    }
     if (pageContext.app && apps.some(app => app.key === pageContext.app.key)) {
       selectedKey = pageContext.app.key; $('chat-app').value = selectedKey;
       $('chat-app').title = pageContext.app.name;
@@ -127,21 +133,27 @@ function notice(message, error = false, contextual = false) {
   $('notice').textContent = message; $('notice').dataset.error = String(error); $('notice').hidden = !message;
   $('notice').dataset.contextual = String(contextual);
 }
+function needsAnaplanSignIn() { return pageContext.state.browserSignInRequired || pageContext.state.modelSignInRequired; }
+function showModelSignIn(challenge) {
+  clearDiscoveryCache();
+  anaplanState = 'login'; anaplanMessage = 'Sign-in required';
+  $('auth').hidden = false;
+  const url = safeSignInUrl(challenge?.url);
+  $('auth-detail').textContent = challenge?.userCode ? `Sign-in code: ${challenge.userCode}` : '';
+  $('auth-link').hidden = !url;
+  if (url) $('auth-link').href = url; else $('auth-link').removeAttribute('href');
+  $('auth-progress').textContent = url ? 'After signing in, select Check connection.' : 'No sign-in link received. Check connection to retry.';
+  renderAnaplan();
+}
 function showError(error) {
   if (error.name === 'AbortError') return;
   if (error.code === 'ANAPLAN_LOGIN') {
-    clearDiscoveryCache();
-    anaplanState = 'login'; anaplanMessage = 'Sign-in required';
-    view('admin'); $('connection-settings').open = true;
-    $('auth').hidden = false;
-    const url = safeSignInUrl(error.url);
-    $('auth-detail').textContent = error.userCode ? `Sign-in code: ${error.userCode}` : '';
-    $('auth-link').hidden = !url;
-    if (url) $('auth-link').href = url; else $('auth-link').removeAttribute('href');
-    $('auth-progress').textContent = url ? 'After signing in, select Check connection.' : 'No sign-in link received. Check connection to retry.';
-    notice(''); renderAnaplan();
-    $('anaplan-connection').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('anaplan-connection').focus({ preventScroll: true });
-  } else if (error.message === pageContext.state.error && (!$('live-context').hidden || pageContext.state.browserSignInRequired)) notice('');
+    pageContext.requireModelSignIn(error); notice('');
+    if (!$('admin-view').hidden) {
+      $('connection-settings').open = true;
+      $('anaplan-connection').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('anaplan-connection').focus({ preventScroll: true });
+    }
+  } else if (error.message === pageContext.state.error && (!$('live-context').hidden || needsAnaplanSignIn())) notice('');
   else notice(error.message, true);
 }
 function on(id, event, handler) {
@@ -167,17 +179,17 @@ function currentScopeKey() {
 function currentThread() { return chatHistory.current(currentScopeKey()); }
 function updateComposer() {
   const thread = activeTurn?.thread || currentThread();
-  $('send').disabled = busy ? questionCancelled : savingApp || llmBusy || chatHistory.loading || chatHistory.listOpen || Boolean(chatHistory.viewed) || !chatHistory.ready || !thread?.loaded || Boolean(thread?.loadError || thread?.saveError) || !currentApp() || !connectionStatus?.provider?.loggedIn || !pageContext.state.ticket || pageContext.state.loading;
+  $('send').disabled = busy ? questionCancelled : savingApp || llmBusy || anaplanBusy || needsAnaplanSignIn() || chatHistory.loading || chatHistory.listOpen || Boolean(chatHistory.viewed) || !chatHistory.ready || !thread?.loaded || Boolean(thread?.loadError || thread?.saveError) || !currentApp() || !connectionStatus?.provider?.loggedIn || !pageContext.state.ticket || pageContext.state.loading;
   $('send').type = busy ? 'button' : 'submit';
   $('send').dataset.action = busy ? 'stop' : 'send';
   $('send').setAttribute('aria-label', busy ? questionCancelled ? 'Stopping answer' : 'Stop answer' : 'Send message');
   $('send').title = busy ? questionCancelled ? 'Stopping answer…' : 'Stop answer' : 'Send message (Enter)';
-  $('question').disabled = busy || savingApp || !currentApp() || pageContext.state.browserSignInRequired;
+  $('question').disabled = busy || savingApp || !currentApp() || needsAnaplanSignIn();
   $('chat-app').disabled = busy || savingApp;
   $('question-status').textContent = savingApp ? 'Saving app…' : busy || !currentApp() ? '' : !connectionStatus?.provider?.loggedIn ? 'Connect the AI provider in Admin to ask questions.' : llmBusy ? 'Checking AI settings…' : '';
   if (!busy && (thread?.loadError || !chatHistory.ready)) $('question-status').textContent = thread?.loadError || chatHistory.error || 'Loading saved chats…';
   if (!busy && thread?.saveError) $('question-status').textContent = 'This answer was not saved. Keep it open to copy it, then start a new chat.';
-  $('question-status').hidden = !$('question-status').textContent || chatHistory.listOpen || Boolean(chatHistory.viewed) || pageContext.state.browserSignInRequired;
+  $('question-status').hidden = !$('question-status').textContent || chatHistory.listOpen || Boolean(chatHistory.viewed) || needsAnaplanSignIn();
 }
 function renderConnectionDot(id, state, description) {
   const dot = $(id);
@@ -214,7 +226,7 @@ function applyLlm(settings, force = false) {
   renderLlm(); renderMessages();
 }
 function renderMessages() {
-  const needsSignIn = pageContext.state.browserSignInRequired, thread = currentThread();
+  const needsSignIn = needsAnaplanSignIn(), thread = currentThread();
   if (lastLiveThread && ![...chatHistory.threads.values()].includes(lastLiveThread)) lastLiveThread = null;
   if (thread && !chatHistory.viewed && !chatHistory.listOpen) lastLiveThread = thread;
   const messages = activeTurn?.thread.messages || chatHistory.viewed?.messages || thread?.messages || (needsSignIn ? lastLiveThread?.messages : null) || [];
@@ -235,6 +247,11 @@ function renderMessages() {
   });
   $('browser-sign-in').hidden = !needsSignIn || chatHistory.listOpen;
   $('browser-sign-in').dataset.hasChat = String(messages.length > 0 || busy);
+  const challenge = pageContext.state.modelSignIn, url = safeSignInUrl(challenge?.url);
+  $('model-sign-in-code').textContent = challenge?.userCode ? `Sign-in code: ${challenge.userCode}` : '';
+  $('model-sign-in-code').hidden = !$('model-sign-in-code').textContent;
+  $('model-sign-in-link').hidden = !url;
+  if (url) $('model-sign-in-link').href = url; else $('model-sign-in-link').removeAttribute('href');
   if (needsSignIn) {
     $('live-context').hidden = true; $('context-controls').open = false;
     $('welcome').hidden = true;
@@ -244,10 +261,22 @@ function renderMessages() {
     try { origin = appOrigin(pageContext.app?.origin); } catch {}
     $('browser-sign-in-link').hidden = !origin;
     if (origin) $('browser-sign-in-link').href = origin; else $('browser-sign-in-link').removeAttribute('href');
-    $('browser-sign-in-retry').disabled = pageContext.state.loading;
+    const browserReady = !pageContext.state.browserSignInRequired && Boolean(pageContext.definition);
+    const modelReady = !pageContext.state.modelSignInRequired && anaplanState === 'connected';
+    for (const [id, ready, required] of [['browser-connection-state', browserReady, pageContext.state.browserSignInRequired], ['model-connection-state', modelReady, pageContext.state.modelSignInRequired]]) {
+      $(id).textContent = ready ? 'Connected' : required ? 'Sign-in needed' : 'Not checked';
+      $(id).dataset.state = ready ? 'ready' : required ? 'required' : 'unknown';
+    }
+    $('browser-sign-in-actions').hidden = browserReady;
+    $('browser-sign-in-retry').disabled = pageContext.state.loading || anaplanBusy;
     $('browser-sign-in-retry').textContent = pageContext.state.loading ? 'Checking…' : 'Check connection';
-    $('browser-sign-in-status').textContent = pageContext.state.loading ? 'Checking your Anaplan connection…' : pageContext.state.errorCode === 'ANAPLAN_BROWSER_LOGIN' ? '' : pageContext.state.error;
+    $('browser-sign-in-status').textContent = browserReady ? '' : pageContext.state.loading ? 'Checking your browser connection…' : ['ANAPLAN_BROWSER_LOGIN', 'ANAPLAN_LOGIN'].includes(pageContext.state.errorCode) ? '' : pageContext.state.error;
     $('browser-sign-in-status').hidden = !$('browser-sign-in-status').textContent;
+    $('model-sign-in-actions').hidden = modelReady;
+    $('model-sign-in-retry').disabled = anaplanBusy || pageContext.state.loading;
+    $('model-sign-in-retry').textContent = anaplanBusy ? 'Checking…' : 'Check connection';
+    $('model-sign-in-status').textContent = anaplanBusy ? 'Checking model access…' : anaplanState === 'error' ? anaplanMessage : pageContext.state.modelSignInRequired ? url ? 'Approve access, return to your Anaplan page, then check connection.' : 'Check connection to request a new sign-in link.' : '';
+    $('model-sign-in-status').hidden = !$('model-sign-in-status').textContent;
   }
   updateComposer();
 }
@@ -312,16 +341,19 @@ function checkAnaplanAccess({ openSignIn = false } = {}) {
 }
 async function verifyAnaplanAccess(openSignIn) {
   const sequence = loadSequence;
+  const recovering = pageContext.state.modelSignInRequired;
   let connected = false;
   accessDiscoverySequence = !$('app-editor').hidden && !editing ? sequence : null;
   anaplanBusy = true; anaplanState = 'connecting'; anaplanMessage = 'Checking access…';
-  renderConnection(); renderAnaplan(); renderAppSave(); notice('');
+  renderConnection(); renderAnaplan(); renderAppSave(); notice(''); renderMessages();
   if (!$('auth').hidden) $('auth-progress').textContent = '';
   try {
     await api('/workspaces'); // Authentication check only; workspace resolution stays behind the scenes.
-    $('auth').hidden = true; anaplanState = 'connected';
+    $('auth').hidden = true; $('auth-link').removeAttribute('href'); $('auth-detail').textContent = ''; anaplanState = 'connected';
     anaplanMessage = 'Connected';
-    connected = true;
+    pageContext.modelAccessConnected();
+    if (recovering && pageContext.app) await pageContext.refresh();
+    connected = !pageContext.state.modelSignInRequired;
   } catch (error) {
     if (sequence === loadSequence && !$('app-editor').hidden && !editing) discoveryStatus(error.code === 'ANAPLAN_LOGIN' ? 'Complete sign-in in Anaplan access.' : error.message, true);
     if (error.code === 'ANAPLAN_LOGIN') {
@@ -333,10 +365,12 @@ async function verifyAnaplanAccess(openSignIn) {
     } else {
       anaplanState = 'error'; anaplanMessage = `Could not connect. ${error.message}`;
       if (!$('auth').hidden) $('auth-progress').textContent = anaplanMessage;
-      view('admin'); $('connection-settings').open = true;
-      $('anaplan-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!$('admin-view').hidden) {
+        $('connection-settings').open = true;
+        $('anaplan-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
-  } finally { anaplanBusy = false; accessDiscoverySequence = null; renderConnection(); renderAnaplan(); renderAppSave(); }
+  } finally { anaplanBusy = false; accessDiscoverySequence = null; renderConnection(); renderAnaplan(); renderAppSave(); renderMessages(); }
   // Authentication is finished. Discovery has its own progress, cancellation
   // and errors and must not keep the connection card or OAuth check pending.
   if (connected && sequence === loadSequence && !$('app-editor').hidden && !editing) {
@@ -523,9 +557,17 @@ document.addEventListener('keydown', event => {
 });
 on('first-app', 'click', async () => { view('admin'); await addApp(); });
 on('browser-sign-in-retry', 'click', async () => {
-  if (pageContext.state.loading) return;
+  if (pageContext.state.loading || anaplanBusy) return;
   await pageContext.refresh();
   if (pageContext.state.browserSignInRequired) $('browser-sign-in-retry').focus();
+  else if (pageContext.state.modelSignInRequired) $('model-sign-in-retry').focus();
+  else if (!$('question-form').hidden && !$('question').disabled) $('question').focus();
+});
+on('model-sign-in-retry', 'click', async () => {
+  if (anaplanBusy || pageContext.state.loading) return;
+  await checkAnaplanAccess();
+  if (pageContext.state.modelSignInRequired) $('model-sign-in-retry').focus();
+  else if (pageContext.state.browserSignInRequired) $('browser-sign-in-retry').focus();
   else if (!$('question-form').hidden && !$('question').disabled) $('question').focus();
 });
 on('add-app', 'click', addApp);

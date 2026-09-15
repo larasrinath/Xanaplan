@@ -31,9 +31,14 @@ const directory = mkdtempSync(join(tmpdir(), 'xanaplan-ui-'));
 const store = new Store(directory), mcp = syntheticMcp();
 let authMode = 'connected', discoveryMode = 'available', pageMode = 'current';
 mcp.clientId = () => 'synthetic-client'; mcp.available = () => true; mcp.reset = async () => {};
-mcp.discover = async tool => {
+function checkModelAuth() {
   if (authMode === 'login') throw new AppError('Synthetic sign-in required.', 401, { code: 'ANAPLAN_LOGIN', url: 'https://iam.anaplan.com/test-only', userCode: 'SYNTHETIC' });
   if (authMode === 'error') throw new AppError('Synthetic connection failure.', 502);
+}
+const modelRead = mcp.read;
+mcp.read = (...args) => { checkModelAuth(); return modelRead(...args); };
+mcp.discover = async tool => {
+  checkModelAuth();
   return { items: tool === 'show_workspaces' ? [{ id: model.workspaceId, name: model.workspaceName }] : [{ id: model.modelId, name: model.name }], incomplete: false };
 };
 const providerStatus = { installed: true, loggedIn: true, method: 'SYNTHETIC UI TEST' };

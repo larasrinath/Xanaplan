@@ -1,6 +1,6 @@
 # Setup guide
 
-Install and use **Xanaplan - Planning Assistant 0.9.4** on your own computer. The commands below use a macOS shell, matching the tested development environment.
+Install and use **Xanaplan - Planning Assistant 0.9.5** on your own computer. The commands below use a macOS shell, matching the tested development environment.
 
 ## What you will run
 
@@ -126,6 +126,15 @@ Chrome’s Anaplan sign-in and the MCP’s Anaplan authorization are separate. B
 4. Click **Check connection**.
 5. When an authorization link/code appears, complete the Anaplan sign-in flow, then click **Check connection** again.
 
+If either Anaplan session expires while using the Assistant, its **Connect to Anaplan** card shows two separate statuses:
+
+| Connection | Recovery |
+| --- | --- |
+| **Browser session** | Select **Open Anaplan**, sign in in the same Chrome profile, return to your Anaplan page and select its **Check connection** button. |
+| **Model access** | Select **Authorize model access**, enter the displayed code if requested and approve access. Return to your Anaplan page and select its **Check connection** button. If no link appears or it expires, check again to request a fresh authorization challenge. |
+
+Completing one sign-in does not complete the other. The Assistant stays open; Admin shows the same model authorization details if you choose to go there. Follow-up questions require fresh page verification. History, saved answers and your unsent draft are retained in the open panel. After recovery, send your question when ready; it is never retried automatically. Authorization links and codes are not saved in chat history or local storage. AI CLI sign-in remains separate from both Anaplan connections.
+
 A saved client ID takes priority. Otherwise, the helper uses `ANAPLAN_CLIENT_ID`, or the public `ANAPLAN_CLIENT_ID` value in the Anaplan section of `~/.codex/config.toml`. It does not import unrelated MCP configuration or credentials.
 
 ### Enable an app
@@ -207,7 +216,7 @@ Xanaplan’s helper port is fixed at `8766`. `XANAPLAN_UI_PORT` changes only the
 | MCP unavailable | Build the MCP and confirm `XANAPLAN_MCP_DIR` points to the checkout containing both `dist/index.js` and its installed SDK. |
 | AI provider unavailable | Confirm the selected CLI runs and is signed in. Set its executable override if needed, restart the helper, then check AI access in Admin. |
 | Signed in to Anaplan, but model access fails | Complete MCP authorization as well as Chrome sign-in. Confirm the account can access every connected model. |
-| Assistant shows “Sign in to Anaplan” | Use **Open Anaplan**, sign in in the same Chrome profile, then select **Check connection**. Page controls stay hidden until the browser read succeeds. History and saved answers remain available; your draft is retained. |
+| Assistant shows “Connect to Anaplan” | Check which row says **Sign-in needed**. Use **Open Anaplan** for Browser session or **Authorize model access** with its code for Model access, then check that connection again. Both sessions and fresh page verification are required for follow-ups; History, answers and your draft are retained. |
 | Wrong app or page | In the page menu choose **Follow current tab**. Manual/saved choices stay pinned. Enable unmatched apps in Admin; ambiguous matches need a manual choice. |
 | A worksheet is marked unsupported | Reload the current extension. Version 0.9.3 recognizes Anaplan’s `GRID-PAGE` worksheet catalog type. Reports and edit/draft pages remain unavailable. |
 | Saved selections cannot be restored | Use **Continue on this page**, or verify access to the original page and members. Unknown saved selections are retained and may require clarification for a numeric read. |

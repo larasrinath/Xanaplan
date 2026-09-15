@@ -15,6 +15,7 @@
  */
 
 import { pageFromUrl } from './page-api.mjs';
+import { safeSignInUrl } from './anaplan-auth.mjs';
 
 export async function pageRequest(action, input, { signal, chromeApi = globalThis.chrome } = {}) {
   if (!chromeApi?.runtime?.sendMessage) throw new Error('Open the installed extension in Chrome to read page context.');
@@ -42,7 +43,7 @@ export async function pageRequest(action, input, { signal, chromeApi = globalThi
 export class PageTracker {
   constructor({ read = pageRequest, api, changed = () => {}, resolveApp = () => null }) {
     this.read = read; this.api = api; this.changed = changed; this.resolveApp = resolveApp;
-    this.state = { mode: 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired: false };
+    this.state = { mode: 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired: false, modelSignInRequired: false, modelSignIn: null };
     this.sequence = 0; this.observation = null; this.app = null; this.observing = false;
   }
   invalidate() {
@@ -57,6 +58,19 @@ export class PageTracker {
       Object.assign(this.state, { browserSignInRequired: true, pages: [], context: null, ticket: '', expires: 0 });
       this.definition = null; this.definitionCache = null;
     }
+    if (error.code === 'ANAPLAN_LOGIN') {
+      Object.assign(this.state, { modelSignInRequired: true, context: null, ticket: '', expires: 0,
+        modelSignIn: { url: safeSignInUrl(error.url), userCode: typeof error.userCode === 'string' ? error.userCode.slice(0, 200) : '' },
+      });
+    }
+  }
+  requireModelSignIn(error) {
+    this.invalidate(); this.setError(error); this.changed(this.state);
+  }
+  modelAccessConnected() {
+    this.state.modelSignInRequired = false; this.state.modelSignIn = null;
+    if (this.state.errorCode === 'ANAPLAN_LOGIN') { this.state.error = ''; this.state.errorCode = ''; }
+    this.changed(this.state);
   }
   matchingApp(observation) {
     const page = pageFromUrl(observation?.url), app = page && this.resolveApp(page);
@@ -65,7 +79,8 @@ export class PageTracker {
   async setApp(app, { manual = false, observation } = {}) {
     if (!manual && this.app?.key === app?.key && this.app?.revision === app?.revision) return;
     const browserSignInRequired = this.state.browserSignInRequired && Boolean(app) && this.app?.origin === app.origin;
-    this.app = app; this.state = { mode: manual ? 'manual' : 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired };
+    const { modelSignInRequired, modelSignIn } = this.state;
+    this.app = app; this.state = { mode: manual ? 'manual' : 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired, modelSignInRequired, modelSignIn };
     if (observation) this.observation = observation;
     this.definition = null; this.definitionCache = null; this.saved = null; this.inherited = null; this.invalidate();
     if (app) await this.refresh({ observe: !observation });
@@ -102,13 +117,13 @@ export class PageTracker {
     try {
       await candidate.refresh({ observe: false });
       if (seq !== this.sequence || this.restoring?.tracker !== candidate) throw new DOMException('Saved page restoration stopped', 'AbortError');
-      if (!candidate.state.ticket) throw Object.assign(new Error(candidate.state.error || 'Saved page restoration was stopped.'), { code: candidate.state.errorCode });
+      if (!candidate.state.ticket) throw Object.assign(new Error(candidate.state.error || 'Saved page restoration was stopped.'), { code: candidate.state.errorCode, ...candidate.state.modelSignIn });
       this.app = app; this.state = candidate.state; this.saved = candidate.saved;
       this.definition = candidate.definition; this.definitionCache = candidate.definitionCache; this.inherited = null;
     } catch (error) {
       if (seq === this.sequence) {
         this.state = previous;
-        if (error.code === 'ANAPLAN_BROWSER_LOGIN') this.setError(error);
+        if (['ANAPLAN_BROWSER_LOGIN', 'ANAPLAN_LOGIN'].includes(error.code)) this.setError(error);
       }
       throw error;
     } finally {
@@ -192,6 +207,7 @@ export class PageTracker {
       } });
       if (seq !== this.sequence) return;
       Object.assign(this.state, result);
+      this.state.modelSignInRequired = false; this.state.modelSignIn = null;
     } catch (error) {
       if (seq === this.sequence && (timedOut || error.name !== 'AbortError')) this.setError(timedOut ? new Error('Page verification timed out. Refresh to try again.') : error);
     } finally {
@@ -203,7 +219,7 @@ export class PageTracker {
     // Re-observe immediately before every question; polling is only a UI aid.
     await this.observe();
     if (!this.state.ticket || this.state.expires <= Date.now() + 10000) await this.refresh();
-    if (!this.state.ticket || this.state.loading) throw Object.assign(new Error(this.state.error || 'Wait for page context to finish loading.'), { code: this.state.errorCode });
+    if (!this.state.ticket || this.state.loading) throw Object.assign(new Error(this.state.error || 'Wait for page context to finish loading.'), { code: this.state.errorCode, ...this.state.modelSignIn });
     return structuredClone({ ticket: this.state.ticket, context: this.state.context });
   }
 }

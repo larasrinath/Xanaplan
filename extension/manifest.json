@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Xanaplan - Planning Assistant",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "minimum_chrome_version": "116",
   "description": "Ask business questions alongside Anaplan, with local app context and read-only model access.",
   "icons": {

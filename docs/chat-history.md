@@ -6,7 +6,7 @@ The current page appears in a compact row with an on-demand menu. A muted line s
 
 ## Reopening and continuing
 
-If Chrome needs Anaplan sign-in, History and saved messages remain readable. Follow-up controls stay disabled until fresh page verification is available. The recovery card offers Open Anaplan and Check connection; it preserves unsent drafts and removes stale continuation notices. A browser sign-in failure during saved-page restoration invalidates the expired page access instead of restoring its old ticket.
+If either Chrome’s Anaplan session or MCP model authorization needs sign-in, History and saved messages remain readable. Follow-up controls stay disabled until fresh page verification is available. The recovery card identifies Browser session and Model access separately, with the relevant sign-in action and Check connection. It preserves unsent drafts and removes stale continuation notices. Either sign-in failure during saved-page restoration invalidates expired page access instead of restoring the old ticket. Model authorization links and codes are never stored with conversations. Recovery never resends a failed question automatically.
 
 - Changing pages or selections during an answer leaves its original conversation and verified snapshot in place. Activity identifies the original page when it differs from the current page. The finished answer stays visible and offers the same current-page and saved-context choices below. A local save failure still leaves the answer available to copy, with continuation disabled until a new chat is started.
 - Reopening the panel restores the most recently updated conversation matching the current app revision, AI-settings revision and verified page/model/filter fingerprint.
@@ -28,8 +28,8 @@ Saved restoration sends `savedConversationId` and `savedConversationRevision` to
 
 ## Validation
 
-Version 0.9.4 passes all **157 automated tests**, including browser sign-in loss during continuation, saved-chat browsing while signed out and recovery without losing drafts. The tests cover persistence across helper restart, private file permissions, original sources/context, authoritative history, app/page/filter/provider isolation, stale revisions, read access after app removal, deletion, damaged files and visible save failure. Panel tests also cover both continuation choices, failed restoration, unknown saved selections, browser/app/page navigation during a running answer, explicit Stop and preservation of an unsaved answer after navigation.
+Version 0.9.5 passes all **161 automated tests**, including browser sign-in loss during continuation, model expiry during a read, saved-chat browsing while signed out and independent connection recovery without losing drafts. The tests cover persistence across helper restart, private file permissions, original sources/context, authoritative history, app/page/filter/provider isolation, stale revisions, read access after app removal, deletion, damaged files and visible save failure. Panel tests also cover both continuation choices, failed restoration, unknown saved selections, browser/app/page navigation during a running answer, explicit Stop and preservation of an unsaved answer after navigation.
 
 Historical browser checks for earlier versions used isolated synthetic data to create two conversations, view History at 390 px and 320 px without horizontal overflow, and reload the panel to restore the latest matching chat. The compact default header and History view were inspected visually. No live Anaplan or provider calls were made for this feature's tests.
 
-The latest 0.9.4 native visual review was blocked by computer-use permissions. Current automated DOM tests verify behavior, not pixel layout or live Anaplan accuracy.
+Native visual review remains blocked by computer-use permissions. Current automated DOM tests verify behavior, not pixel layout or live Anaplan accuracy.

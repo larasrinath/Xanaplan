@@ -67,10 +67,21 @@
       <div id="conversation" aria-live="polite" aria-relevant="additions">
         <section id="browser-sign-in" class="browser-sign-in" aria-labelledby="browser-sign-in-title" hidden>
           <div class="sign-in-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M4 12h11m-4-4 4 4-4 4"/></svg></div>
-          <h2 id="browser-sign-in-title">Sign in to Anaplan</h2>
-          <p>Sign in in this Chrome profile, then check your connection to continue.</p>
-          <div class="sign-in-actions"><a id="browser-sign-in-link" target="_blank" rel="noopener noreferrer">Open Anaplan ↗</a><button id="browser-sign-in-retry" class="primary" type="button">Check connection</button></div>
-          <p id="browser-sign-in-status" role="status" hidden></p>
+          <h2 id="browser-sign-in-title">Connect to Anaplan</h2>
+          <p>Two connections keep your answers in context. Complete the sign-in that needs attention.</p>
+          <section class="sign-in-step" aria-labelledby="browser-connection-title">
+            <div class="sign-in-step-heading"><h3 id="browser-connection-title">Browser session</h3><span id="browser-connection-state" class="sign-in-state"></span></div>
+            <p>Reads your page and selections from this Chrome profile.</p>
+            <div id="browser-sign-in-actions" class="sign-in-actions"><a id="browser-sign-in-link" target="_blank" rel="noopener noreferrer">Open Anaplan ↗</a><button id="browser-sign-in-retry" class="primary" type="button">Check connection</button></div>
+            <p id="browser-sign-in-status" role="status" hidden></p>
+          </section>
+          <section class="sign-in-step" aria-labelledby="model-connection-title">
+            <div class="sign-in-step-heading"><h3 id="model-connection-title">Model access</h3><span id="model-connection-state" class="sign-in-state"></span></div>
+            <p>Authorizes Xanaplan to read model data. This sign-in is separate from Chrome.</p>
+            <p id="model-sign-in-code" hidden></p>
+            <div id="model-sign-in-actions" class="sign-in-actions"><a id="model-sign-in-link" target="_blank" rel="noopener noreferrer" hidden>Authorize model access ↗</a><button id="model-sign-in-retry" class="primary" type="button">Check connection</button></div>
+            <p id="model-sign-in-status" role="status" hidden></p>
+          </section>
           <p class="sign-in-note">Your saved chats are still available in History.</p>
         </section>
         <div id="welcome" class="welcome">
