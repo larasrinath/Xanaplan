@@ -5,7 +5,7 @@ Record user-visible changes here; the README describes current setup and behavio
 ## 0.9.3
 
 - Add a complete setup guide covering local installation, both sign-in flows, the page menu, updates, troubleshooting and backups. Refresh the README, product behavior, history and live acceptance docs.
-- License Xanaplan under Apache 2.0 with the canonical `LICENSE` and matching package metadata.
+- License Xanaplan under Apache 2.0 with the full license text, a completed copyright notice for Lara Srinath and matching package metadata.
 - Rename the extension and panel title to “Xanaplan - Planning Assistant”, using a plain hyphen.
 - Apply the supplied logo’s blue, lavender and cream palette subtly across Assistant, History, Admin, navigation, controls, chat bubbles and activity states. Keep surfaces nearly white and text dark.
 - Keep answers running when the browser page, chat page or selections change. Retain the original verified context and conversation, show which page is being answered, and keep the completed answer visible with both continuation choices. Explicit Stop still cancels.
