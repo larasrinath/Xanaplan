@@ -133,4 +133,4 @@ Update the README and relevant guides with setup, UI, behavior or configuration 
 
 ## License
 
-Copyright 2026 Lara Srinath. Licensed under the [Apache License, Version 2.0](LICENSE). Dependencies retain their own licenses.
+Copyright 2026 Lara Srinath. Licensed under the [Apache License, Version 2.0](LICENSE). Redistribution must carry the attribution in [NOTICE](NOTICE); every source file repeats the license header. Dependencies retain their own licenses.
