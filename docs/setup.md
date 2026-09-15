@@ -118,7 +118,7 @@ Testing an unsaved choice does not activate it. The saved provider/model applies
 
 ### Anaplan access
 
-Chrome’s Anaplan sign-in and the MCP’s Anaplan authorization are separate. Both need access to the app and its models.
+Chrome’s Anaplan sign-in and the MCP’s Anaplan authorization are separate. Both need access to the app and its models. Xanaplan currently configures its MCP subprocess for OAuth device authorization only; the standalone MCP’s certificate and basic-auth options are not exposed by Xanaplan.
 
 1. Sign in to Anaplan in the same Chrome profile.
 2. Open **Admin settings → Anaplan access**.
@@ -153,17 +153,31 @@ Changing pages or selections leaves a running answer on its original verified co
 
 ## Updating an existing installation
 
-Wait for a running answer to finish, then stop the helper with **Ctrl+C**. From the Xanaplan checkout:
+Wait for a running answer to finish, then stop the helper with **Ctrl+C**. Keep `.local/` to preserve your settings and completed conversations.
+
+If the update requires a newer `anaplan-mcp`, update and rebuild it while the helper is stopped. For the sibling layout used in this guide:
 
 ```sh
+cd ~/Projects/Github/anaplan-mcp
+git pull --ff-only
+npm install
+npm run build
+```
+
+Use your actual checkout path if it differs. Rebuild whenever the MCP’s source or dependencies change; Xanaplan uses its compiled `dist/index.js`.
+
+Update Xanaplan and restart the helper:
+
+```sh
+cd ~/Projects/Github/Xanaplan
 git pull --ff-only
 npm ci
 npm start
 ```
 
-Reload Xanaplan at `chrome://extensions` and reopen its panel. If Git reports local source changes or a non-fast-forward update, resolve those changes before retrying; do not delete your local settings to update the app.
+Wait for the helper’s startup message, reload Xanaplan at `chrome://extensions`, and reopen its panel. In Admin, check **AI access** and **Anaplan access**; complete Anaplan authorization again if prompted. Return to Assistant and confirm the page row matches the intended context.
 
-Rebuild `anaplan-mcp` with `npm install` and `npm run build` when its source or dependencies change. A helper/backend update requires a helper restart; frontend-only changes need an extension reload. This release adds no new extension permissions.
+If Git reports local source changes or a non-fast-forward update in either checkout, resolve those changes before retrying. A helper/backend update requires a helper restart; extension-only changes need an extension reload.
 
 ## Optional configuration
 
@@ -218,4 +232,4 @@ npm run test:ui
 
 The first two commands run automated checks. The last starts a synthetic harness at `http://127.0.0.1:8768/`; open that URL yourself for fixture-based UI testing. The harness uses temporary settings and no live Anaplan or AI requests. It is separate from the actual extension and does not install it.
 
-For live validation, use the [page acceptance checks](page-assistant.md#live-acceptance-checklist). For internal behavior, see [architecture](architecture.md), [saved chats](chat-history.md) and [theme](theme.md). The project is licensed under [Apache 2.0](../LICENSE).
+For live validation, use the [page acceptance checks](page-assistant.md#live-acceptance-checklist). For internal behavior, see [architecture](architecture.md), [saved chats](chat-history.md) and [theme](theme.md). See the [Anaplan affiliation and trademark disclaimer](../README.md#disclaimer). The project is licensed under [Apache 2.0](../LICENSE).

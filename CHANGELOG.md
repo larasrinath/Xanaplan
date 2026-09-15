@@ -4,7 +4,8 @@ Record user-visible changes here; the README describes current setup and behavio
 
 ## 0.9.3
 
-- Add a complete setup guide covering local installation, both sign-in flows, the page menu, updates, troubleshooting and backups. Refresh the README, product behavior, history and live acceptance docs.
+- Add a complete setup guide covering local installation, AI sign-in, Chrome’s Anaplan sign-in, MCP authorization, the page menu, updates, troubleshooting and backups. Refresh the README, product behavior, history and live acceptance docs.
+- Add an Anaplan affiliation and trademark disclaimer. Clarify OAuth-only model access, MCP rebuild order and post-update connection checks; remove temporary verification notes from the README.
 - License Xanaplan under Apache 2.0 with the full license text, a completed copyright notice for Lara Srinath and matching package metadata.
 - Add a NOTICE file, package authorship metadata and an Apache header on every source file, so attribution travels with the code when files are redistributed on their own.
 - Rename the extension and panel title to “Xanaplan - Planning Assistant”, using a plain hyphen.
