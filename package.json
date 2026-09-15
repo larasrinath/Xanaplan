@@ -2,7 +2,7 @@
   "name": "xanaplan",
   "version": "0.9.3",
   "description": "Ask business questions alongside Anaplan, with local app context and read-only model access.",
-  "author": "Lara Srinath <larasrinathp@gmail.com>",
+  "author": "Lara Srinath",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/larasrinath/Xanaplan.git"
