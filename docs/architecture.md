@@ -7,11 +7,14 @@ Xanaplan has two runtimes: a Chrome extension and a local Node.js helper. There 
 | Module | Responsibility |
 | --- | --- |
 | `extension/panel.js` | Coordinates Assistant/Admin state, app setup, settings, context drafts, and per-revision conversations. |
+| `extension/welcome.mjs` | Builds local starter questions from verified page metadata and renders the greeting without additional network calls. |
 | `extension/chat-history.mjs` | Loads saved conversations, restores matching threads, manages archive browsing/search and renders History controls. |
 | `server/conversations.mjs` | Persists displayed messages and source snapshots in atomic, owner-only local files; validates conversation scope/revision and provides archive summaries. |
 | `extension/panel.html`, `extension/panel.css` | Side-panel markup and styles. |
 | `extension/local-api.mjs` | Sends paired HTTP requests to the helper and preserves structured errors and cancellation. |
+| `extension/chat-stream.mjs`, `extension/question-progress.mjs` | Decode incremental chat events and render transient operation activity, elapsed time, connection state and Stop. |
 | `extension/conversation-view.mjs` | Renders messages, model sources, and context labels using text nodes. |
+| `extension/answer-markdown.mjs` | Renders a bounded Markdown subset using DOM nodes, without raw HTML, images or executable links. |
 | `extension/searchable-select.mjs` | Search matching and keyboard-accessible app selection. |
 | `extension/anaplan-auth.mjs` | Validates sign-in links and opens the explicit sign-in flow. |
 | `extension/app-discovery.mjs` | Sends discovery jobs to the service worker and applies list caching. |
@@ -21,7 +24,7 @@ Xanaplan has two runtimes: a Chrome extension and a local Node.js helper. There 
 | `extension/discovery-api.mjs` | Makes background GET requests and validates tenant, app, and model responses. |
 | `extension/page-api.mjs`, `extension/page-background.mjs` | Read published page catalogs/definitions and normalize card sources through authorized, cancellable background jobs. |
 | `extension/page-observer.mjs` | Reads visible selector labels, page title, model name and card IDs in the existing Anaplan tab via an isolated, on-demand snapshot. |
-| `extension/page-tracker.mjs`, `extension/page-panel.mjs` | Manage follow/manual context, generation guards, pre-question observation, page controls and polling/tab events. |
+| `extension/page-tracker.mjs`, `extension/page-panel.mjs` | Manage follow/manual/saved context, enabled-app matching, generation guards, pre-question observation, the compact page menu and polling/tab events. |
 
 App discovery uses Chrome-managed Anaplan cookies and background GETs. Page context additionally observes specific controls in the already-open tab and its existing Springboard frame using `chrome.scripting`. It does not create frames, switch tenants, read storage/cookies, intercept requests or navigate tabs. Sign-in is a separate explicit action.
 
@@ -37,7 +40,9 @@ App discovery uses Chrome-managed Anaplan cookies and background GETs. Page cont
 | `server/store.mjs` | Persists app context, AI settings, connection settings, and legacy model context. |
 | `server/apps.mjs` | Resolves and independently verifies all browser-discovered model memberships through MCP. |
 | `server/chat.mjs` | Orchestrates bounded reads and answers using saved app/context revisions and source evidence. |
+| `server/chat-progress.mjs` | Maps actual read operations to user-facing labels and writes opt-in NDJSON progress, heartbeat, result and error events. |
 | `server/page-context.mjs`, `server/page-metadata.mjs` | Verify page source membership and selector IDs through MCP; parse its current table/view metadata with completeness checks. |
+| `server/saved-page-context.mjs` | Loads authoritative saved page snapshots and checks restored source/filter identity before a new ticket is issued. |
 | `server/page-scope.mjs` | Enforce page/module/view scope, apply validated filter overrides and trace bounded formula dependencies. |
 | `server/providers.mjs` | Selects the saved provider, checks AI revisions, and runs synthetic connection tests. |
 | `server/openai.mjs`, `server/claude.mjs` | Implement the existing provider CLI integrations. |
@@ -49,14 +54,17 @@ HTTP handling and domain modules can be imported without starting the helper, re
 ## Request flow
 
 1. **Enable an app:** panel → discovery service worker → Anaplan GET responses → helper `/app-discovery` → MCP model verification → discovery ticket → helper `/apps` → local store.
-2. **Identify context:** selected app + observed tab or manual page → published page definitions → helper `/page-context` → MCP source/filter verification → five-minute context ticket. Every result is generation guarded.
-3. **Ask a question:** fresh tab observation → freeze verified context ticket → paired helper `/chat` → saved provider/revision → structured AI decision → page-scoped MCP reads / verified formula expansion → cited answer with effective filters → context-specific conversation.
+2. **Identify context:** selected app + observed tab, manual page or saved chat → published page definitions → helper `/page-context` → MCP source/filter verification → five-minute context ticket. The route supports progress streaming. Every result is generation guarded. A recent definition can be reused for selector-only changes; explicit refresh fetches it again. Saved mode loads its filters from the helper’s conversation store and verifies them against the fresh page and MCP membership.
+3. **Ask a question:** fresh tab observation → freeze verified context ticket → paired helper `/chat` → saved provider/revision → structured AI decision → page-scoped MCP reads / verified formula expansion → cited answer with effective filters → saved conversation. With `stream: true`, operation events arrive before the final result. A ten-second heartbeat confirms the helper is connected without claiming model progress. The client reports 45 seconds without stream data as a disconnected/stalled helper and cancels the response. Legacy JSON callers keep their existing contract.
 4. **Save settings or context:** validate input/revision → prepare the next store snapshot → write and rename the settings file. A failed write restores the previous in-memory snapshot, so unsaved values never become the active choice.
 
 App `/chat` requires a ticket bound to its app revision. The helper pins one verified page model. It exposes only page tools and rejects raw `pages`, exports and unrelated module/view reads. Formula expansion is lazy, limited to four levels and 25 modules, and records paths. Each answer has at most 10 AI read decisions, 1,000 rows per cell read and bounded evidence; metadata verification is separately bounded. Unknown or unsupported filters block cell reads while allowing an explanatory response. See [page context limits](page-assistant.md).
 
+History uses a saved scope by default. An explicit `continueInCurrentContext: true` permits a saved conversation to move to the current verified scope on its next successful turn; merely viewing or preparing a continuation never changes its file. The original messages retain their sources/page snapshots, and the next user message records a context-change marker. The helper loads authoritative history from disk, warns the provider that earlier contexts are background rather than current evidence, and enforces all new reads through the current ticket and model. Scope changes still require current conversation and AI revisions. Saved restoration verifies an isolated candidate before replacing the active tracker context. Its original unresolved selectors survive restoration and ticket renewal; exact reads enforce missing selections and module evidence carries unresolved conditions until a verified explicit question override resolves them.
+
 ## Refactoring boundaries
 
+- A running turn retains its own thread, verified page snapshot and request controller in `panel.js`. Page-tracker updates may refresh the next context but never abort that turn or redirect its result. Completion in a different context uses the existing archive continuation controls and preserves the original saved scope. Explicit Stop and panel closure still abort.
 - Keep network calls out of view rendering and preserve the panel's cancellation and revision checks when moving stateful code.
 - Keep authorization and membership checks in the helper even when the browser has already validated inputs.
 - Retain legacy model storage and endpoints until there is an explicit migration plan for existing local data.

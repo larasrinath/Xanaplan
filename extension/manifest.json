@@ -1,14 +1,38 @@
 {
   "manifest_version": 3,
-  "name": "Xanaplan — Business Assistant",
-  "version": "0.8.2",
+  "name": "Xanaplan - Planning Assistant",
+  "version": "0.9.3",
   "minimum_chrome_version": "116",
   "description": "Ask business questions alongside Anaplan, with local app context and read-only model access.",
-  "permissions": ["sidePanel", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1:8766/*", "https://*.app.anaplan.com/*"],
-  "action": { "default_title": "Open Xanaplan" },
-  "background": { "service_worker": "background.js", "type": "module" },
-  "side_panel": { "default_path": "panel.html" },
+  "icons": {
+    "16": "assets/xanaplan-logo.png",
+    "32": "assets/xanaplan-logo.png",
+    "48": "assets/xanaplan-logo.png",
+    "128": "assets/xanaplan-logo.png"
+  },
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8766/*",
+    "https://*.app.anaplan.com/*"
+  ],
+  "action": {
+    "default_title": "Open Xanaplan",
+    "default_icon": {
+      "16": "assets/xanaplan-logo.png",
+      "32": "assets/xanaplan-logo.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:8766 https://*.app.anaplan.com; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'"
   }

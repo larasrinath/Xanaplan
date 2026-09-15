@@ -32,6 +32,19 @@ test('worksheet main grid and insight card definitions are separate sources', ()
   const result = pageDefinition(worksheet, { id: secondPageId, type: 'worksheets', name: 'Costs' }, app);
   assert.equal(result.sources.length, 2); assert.equal(result.sources[0].cardId, `mainGrid:${secondPageId}`);
 });
+
+test('Anaplan GRID-PAGE catalog entries load through the worksheet route', async () => {
+  assert.equal(pageCatalog(catalog, app)[1].type, 'worksheets');
+  const worksheet = { ...board, pageGuid: secondPageId, name: 'Costs', dataSourceId: '101', widgets: [{ widgetDefinition: board.widgets.budget }] };
+  const urls = [];
+  const result = await readPageDefinition({ ...app, pageId: secondPageId }, { fetchImpl: async (url, options) => {
+    urls.push(url); assert.equal(options.method, 'GET');
+    return Response.json(url.includes('/grid-pages/') ? worksheet : catalog);
+  } });
+  assert.equal(result.page.type, 'worksheets'); assert.equal(result.sources.length, 2);
+  assert.match(urls[1], new RegExp(`/grid-pages/${secondPageId}$`));
+  assert.equal(result.unavailableReason, undefined); assert.equal(urls.length, 3);
+});
 test('empty selection metadata is ordinary scalar context and data-bound text remains a source', () => {
   const value = structuredClone(board);
   value.contextOptions[0] = { ...value.contextOptions[0], filter: {}, selections: [], selectedItems: [] };
@@ -60,6 +73,16 @@ test('page discovery uses only published GET routes and rechecks membership', as
   assert.equal(result.page.id, pageId); assert.equal(urls.length, 3);
   assert.match(urls[0], /includeUnpublished=false/); assert.equal(urls[0], urls[2]);
   await assert.rejects(readPageDefinition({ ...app, pageId }, { fetchImpl, signal: AbortSignal.abort() }), /cancel/i);
+});
+test('report and unknown pages keep the supported page picker available with distinct explanations', async () => {
+  for (const type of ['REPORT', 'NEW_PAGE_TYPE']) {
+    const data = structuredClone(catalog); data.pages[0].pageType = type;
+    let calls = 0;
+    const result = await readPageDefinition({ ...app, pageId }, { fetchImpl: async () => { calls++; return Response.json(data); } });
+    assert.equal(calls, 1); assert.equal(result.pages.length, 2); assert.equal(result.page, undefined);
+    assert.match(result.unavailableReason, type === 'REPORT' ? /report pages/ : /does not recognize/);
+    if (type !== 'REPORT') assert.doesNotMatch(result.unavailableReason, /report pages/);
+  }
 });
 test('tab observation never injects into unrelated tabs and rejects navigation races', async () => {
   let current = { id: 3, url: 'https://example.com' }, injections = 0;

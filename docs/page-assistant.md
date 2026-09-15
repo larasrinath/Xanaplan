@@ -1,6 +1,6 @@
-# Page-aware Assistant · 0.8.2
+# Page-aware Assistant · 0.9.3
 
-Implemented locally; live Anaplan acceptance is in progress. Synthetic fixtures are illustrative contracts, not captured customer data.
+See the [setup guide](setup.md) to install or update the extension. Implemented locally; live Anaplan acceptance remains a separate check. Synthetic fixtures are illustrative contracts, not captured customer data.
 
 The first live issue, reported on 2026-09-13, was Chrome rejecting a dynamic import in the page observer's service-worker path. Version 0.7.1 replaces it with a static import and checks every background dependency for this restriction. Node/DOM tests had allowed the import and did not reproduce that platform rule. [Chrome documents this restriction](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/basics#import-scripts). Reload the unpacked extension and reopen its side panel to apply the patch; successful live page discovery still needs confirmation.
 
@@ -8,13 +8,25 @@ The next live issue was the older Node helper still running without `/page-conte
 
 Live feedback then confirmed page/model discovery and three identified modules on “2000 - Store Placeholder Creation,” but a question counting existing stores with Store Size = Medium was refused because the card uses a custom view. Version 0.7.3 removes that blanket restriction by adding `read_module_cells`: it verifies module/view ownership, applies known page-axis selections, and returns other context as pending conditions to evaluate against evidence. Published query metadata is retained within a 16,000-character per-source / 40,000-character per-page limit; omitted metadata is explicit. Exact custom-card reproduction remains unavailable. The assistant must investigate existing-store membership, size, selected country, hierarchy level and complete coverage before counting. See the [updated discussion plan](assistant-flow-review.md#1-use-verified-modules-to-investigate-custom-card-questions).
 
+## Loading and context controls · 0.9.1
+
+Page loading displays the current operation, elapsed seconds and Stop. Metadata verification streams progress and helper heartbeats; the browser cancels the load after 90 seconds overall, with a separate 45-second stream-idle limit. Cancelled and superseded results cannot supply a ticket.
+
+A complete model-wide view catalog is reused across cards during verification, with exact-ID search for large catalogs and module ownership checked separately. Older connectors retain the module-scan fallback. Selector-only changes reuse the most recent published definition for up to 60 seconds while re-verifying all selectors; explicit Refresh always reloads the definition. A synthetic 51-module fixture reduces saved-view membership scans from 51 to one. Live latency still depends on Anaplan and MCP.
+
+The compact context row shows the page name and current mode. Its popover contains app/page/model selectors, Refresh and Follow current tab; no generic “App & page” heading is repeated. The menu overlays the conversation and closes after a successful choice, outside click or Escape. Errors remain inline without forcing it open. History can restore a saved page and its selectors as a separately labeled Saved context; see [saved conversations](chat-history.md).
+
+## Worksheet recognition · 0.9.3
+
+The Anaplan client’s catalog enum is `GRID-PAGE`, mapped to `/worksheets/` in browser URLs and `/grid-pages/` for published definitions. The adapter previously recognized `GRID` but omitted this actual catalog value, incorrectly disabling worksheets. The catalog fixture and GET-route regression now use `GRID-PAGE`, matching the captured Table of Contents and Springboard clients cited below. Reports and unknown types remain distinct.
+
 ## Behavior
 
 1. Enable an app in Admin, then select it in Assistant.
-2. Follow the active tab's published board/worksheet automatically. Page selection never switches the enabled app behind the user's back; a different app/tab prompts for a matching page.
+2. Follow the active tab's published board/worksheet automatically, matching its origin and app ID to exactly one enabled app at startup and on navigation. Unmatched or ambiguous apps require choosing a context or enabling the app in Admin. Explicit manual app/page choices and saved contexts remain pinned until **Follow current tab** is selected again.
 3. The page dropdown changes only chat context. It remains pinned until **Follow current tab** is selected. A manual page uses same-model inherited page selectors when available, otherwise its published defaults; independent card defaults retain their own scope.
 4. Use captured page/card selectors when the question omits those dimensions. Resolve names with direct lookup, then bounded verified-view members and dimension members if needed; never choose the first matching child or accept duplicates/incomplete metadata. Fixed hidden line-item choices are accepted only after verifying membership in their explicitly scoped module. Show compact app/page names and confirmed shared page selection values. Label inherited tab values explicitly; omit unknown, independent card and technical diagnostics from the start page. Keep verified modules, observed page/card selections, inherited selections, page defaults and question overrides in the internal context for answering. Unknown selections stay unknown. Multiple possible source models require an explicit chat model choice.
-5. Before sending a question, re-observe the tab and freeze the verified context. A tab/context change cancels stale work. Histories are separated by app revision, AI revision, page, model and filters; matching saved conversations restore after a panel/helper restart. History also permits review of other contexts without browser navigation. See [saved conversations](chat-history.md).
+5. Before sending a question, re-observe the tab and freeze the verified context. The answer keeps using that snapshot when the user changes pages or selections; its conversation stays visible while working. If the current context differs when it completes, show the answer with both continuation choices. Explicit Stop and panel closure still cancel the request. Histories are separated by app revision, AI revision, page, model and filters; matching saved conversations restore after a panel/helper restart. History also permits review of other contexts without browser navigation. See [saved conversations](chat-history.md).
 6. Start with page modules. Follow a relevant line-item formula to access referenced modules, including SUM/LOOKUP mapping references. Subsequent traversal is restricted to returned line-item IDs. Maximum depth: four; module count: 25. Cycles do not recurse automatically. Missing, inaccessible, ambiguous or unsupported references are not guessed.
 7. For an explicit item in the question, resolve the requested dimension/item through MCP and override that dimension for that read. Other applicable defaults remain. Relative dates that cannot be matched safely require clarification. The browser's selectors never change.
 8. Answers carry a page/model snapshot; individual sources carry effective filters and dependency paths. Evidence and row limits remain visible.
@@ -32,8 +44,8 @@ Live feedback then confirmed page/model discovery and three identified modules o
 | Scoped, branch-sync, advanced or multi-select context | Keep unresolved conditions explicit. No arbitrary page-axis defaults; investigate business predicates before asking for clarification. |
 | Context that needs row/column-axis filtering | Module reads return these as pending conditions; MCP `read_cells.pages` only applies page dimensions. The assistant must verify and evaluate pending conditions against data. |
 | Line-item cards | Apply verified fixed hidden line-item choices when Line Items is on the page axis; retain off-axis choices as pending conditions. Direct line-item card reproduction still requires a supported axis or future cell-coordinate support. |
-| Reports, edit/draft pages, unknown definitions | Unsupported; select a published board or worksheet. |
-| Large metadata catalogs | Bounded verification stops with a limitation. Finding a saved-view owner may require scanning module view lists. |
+| Reports, edit/draft pages, unknown definitions | Unsupported; select a published board or worksheet. Report and unknown-type errors are distinct, and the page picker retains supported alternatives. |
+| Large metadata catalogs | Use a model-wide view catalog before verifying ownership in the reported module; fall back to bounded module view scans when necessary. Incomplete metadata cannot establish membership. |
 
 These are material coverage limits. This release establishes a guarded page-aware path, not full fidelity for every Anaplan UX page. Do not treat synthetic success as live answer acceptance.
 
@@ -50,13 +62,13 @@ These internal web contracts can change. Live account response shapes and all se
 
 ## Local validation
 
-Latest local result: **121 tests passed**. The custom-card tests cover verified module reads, independent and inherited selectors, off-axis Country conditions, explicit overrides, formula dependencies, access limits, omitted query metadata and partial results. A scripted provider exercises the production request listeners from app discovery through a count sourced from module data, excluding placeholders, other countries, duplicate stores and summary rows. This validates the tool/evidence path, not a live model's reasoning accuracy or the customer's store count. The running synthetic harness previously completed app enablement → page verification → a February query override → a sourced answer over loopback HTTP. Native visual testing was attempted but remained blocked by pending Accessibility/Screen Recording permissions; the automated suite makes no live Anaplan or AI calls.
+Latest local result: **153 tests passed** for 0.9.3, including automatic app matching, answer completion across navigation, Stop, and saved-context continuation. The custom-card tests cover verified module reads, independent and inherited selectors, off-axis Country conditions, explicit overrides, formula dependencies, access limits, omitted query metadata and partial results. A scripted provider exercises the production request listeners from app discovery through a count sourced from module data, excluding placeholders, other countries, duplicate stores and summary rows. This validates the tool/evidence path, not a live model's reasoning accuracy or the customer's store count. The running synthetic harness previously completed app enablement → page verification → a February query override → a sourced answer over loopback HTTP. Native visual testing was attempted but remained blocked by pending Accessibility/Screen Recording permissions; the automated suite makes no live Anaplan or AI calls.
 
 A separate OpenAI-provider check on 2026-09-13 used only synthetic store metadata/data through the actual `answerQuestion` loop and Codex provider. The provider investigated module metadata, invoked `read_module_cells` and returned the expected two distinct existing Medium stores in Canada/Actual, explicitly excluding the duplicate, placeholder, USA store and summary row. This is a model-behavior check on a fixture, not the live customer's count.
 
 Run `npm ci`, `npm test`, and `npm run check`. The page tests cover URL/ownership checks, published-only discovery, saved-view verification, model ambiguity, independent selections, missing/duplicate filters, overrides, module gates, formula references/cycles, stale discovery, ticket enforcement, connection resets, and the app-to-answer route flow.
 
-The jsdom tests also run the actual panel controller: startup, context display, asking, source rendering, chat-only page selection, history restoration and stale-answer cancellation. They do not test visual layout. `npm run test:ui` provides a browser harness with production helper routes and synthetic adapters; `/` exposes fixture controls. All settings are temporary and removed when the harness exits.
+The jsdom tests also run the actual panel controller: startup, context display, asking, source rendering, chat-only page selection, history restoration, answer completion across browser/page/selection changes and explicit cancellation. They do not test visual layout. `npm run test:ui` provides a browser harness with production helper routes and synthetic adapters; `/` exposes fixture controls. All settings are temporary and removed when the harness exits.
 
 Version 0.8.2 adds a synthetic customer hierarchy fixture where direct name lookup misses the visible parent but view metadata resolves it. The production page-context → chat flow reads that parent and the verified hidden line item without asking for an account in the question. Regressions retain duplicate-name, incomplete-metadata, access, cancellation, advanced-filter and wrong-module checks. The reported live selection still requires a connected MCP session for validation.
 
@@ -66,18 +78,18 @@ The fallback uses the existing MCP read-only tools and the [Anaplan view-dimensi
 
 Version 0.8.1 additionally passed a headless Chrome visual check of the production panel with synthetic adapters at 320 px and 390 px. Both widths fit without horizontal overflow. Confirmed page values appeared once, independent card values were excluded, unknown selections hid the summary, and no browser runtime errors occurred. The diagnostic Context details section is absent. These checks do not use live Anaplan data.
 
-## Next-session live acceptance
+## Live acceptance checklist
 
-Restart the helper and reload the unpacked extension so 0.8.2 is active. Use a read-only test app with known totals.
+Restart the helper and reload the unpacked extension so 0.9.3 is active. Use a read-only test app with known totals.
 
 1. Confirm tenant/app enablement and available page names; check the actual catalog and board/worksheet response contracts without retaining credentials or customer values in Git.
 2. Open a saved-view board. Compare detected page, source model, module/view ownership, period/version/entity and independent card selections with Anaplan.
-3. Switch pages via the Anaplan tab, then via the chat dropdown. Verify that only the first navigates and that **Follow current tab** resumes tracking.
-4. Change period/version while idle and during an answer; ensure the previous answer cannot arrive under the new context.
+3. Switch between enabled apps and pages in Anaplan, then make a manual choice in the page menu. Verify that following matches the tab’s enabled app, manual/saved contexts stay pinned, and **Follow current tab** resumes tracking. The chat menu must never navigate Anaplan.
+4. Change period/version and navigate while an answer is running. Confirm it completes visibly with its original page, sources and selections, then verify both continuation choices. Explicit Stop must still cancel.
 5. Ask for a known KPI, then name another period/version in the query. Check cell values and source filters against Anaplan, and confirm browser selectors are unchanged.
 6. Ask a driver question whose formula references another module and a SUM/LOOKUP mapping. Check the cited path and compatible dimensions; unrelated modules must remain inaccessible.
 7. Ask the Existing Stores / Medium question on the custom card. Confirm metadata and module data are investigated, Canada and the existing-store rule are preserved, and the count matches a known complete result. Exercise duplicate display names, hidden/independent selectors, alternative models and runtime filters. Unresolved conditions must be explained specifically rather than refusing merely because the card is custom.
 8. Test expired browser/MCP sign-in, unavailable helper, missing page access and large catalogs. Record actionable recovery and latency.
-9. Inspect panel widths around 320–400 px, keyboard selection, focus, long names, loading states, sources and Stop. Native visual acceptance remains outstanding until browser control is available.
+9. Inspect panel widths around 320–400 px: the compact page popover, outside-click/Escape dismissal, keyboard selection, focus, long names, the logo theme, loading states, sources and the send/Stop toggle. Native visual acceptance remains outstanding until browser control is available.
 
 Record observed schema differences, unsupported card types and first-answer latency before deciding the next implementation slice in the [discussion plan](assistant-flow-review.md).

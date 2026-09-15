@@ -2,6 +2,43 @@
 
 Record user-visible changes here; the README describes current setup and behavior.
 
+## 0.9.3
+
+- Add a complete setup guide covering local installation, both sign-in flows, the page menu, updates, troubleshooting and backups. Refresh the README, product behavior, history and live acceptance docs.
+- License Xanaplan under Apache 2.0 with the canonical `LICENSE` and matching package metadata.
+- Rename the extension and panel title to “Xanaplan - Planning Assistant”, using a plain hyphen.
+- Apply the supplied logo’s blue, lavender and cream palette subtly across Assistant, History, Admin, navigation, controls, chat bubbles and activity states. Keep surfaces nearly white and text dark.
+- Keep answers running when the browser page, chat page or selections change. Retain the original verified context and conversation, show which page is being answered, and keep the completed answer visible with both continuation choices. Explicit Stop still cancels.
+- Replace the boxed App/Page section with a compact page row and an on-demand menu for following the current tab, refreshing or choosing another app/page. Omit the generic “App & page” heading. The menu overlays the conversation, closes on selection, outside click or Escape, and retains accessible labels.
+- Follow the current tab’s uniquely matched enabled app as well as its page, fixing mismatches between the selected app and the browser. Explicit manual and saved-context choices stay pinned until following is resumed.
+- Use one composer action button: the send arrow switches to a square Stop icon while answering and returns after completion, cancellation or an error. Remove the separate answer Stop buttons.
+- Recognize Anaplan’s `GRID-PAGE` catalog type as a worksheet. Previously these pages were incorrectly disabled as an unsupported type even though a worksheet reader exists.
+- Reopen saved chats with unresolved selections while preserving those limitations. Known saved filters still require fresh verification; numeric reads that need an unknown selector still require clarification. Failed or cancelled restores leave the current page and continuation controls usable and show a single error.
+- Use “What would you like to understand?” in the composer. Enter sends; Alt+Enter inserts a newline at the cursor. IME composition does not send. Remove page guidance from the chat box and show keyboard hints there; actionable chat errors appear outside it.
+- Restart the helper and reload the extension to apply the saved-context fix and UI changes.
+
+## 0.9.2
+
+- Keep a time-of-day greeting and build starter questions from the verified page’s named cards and confirmed selections. Suggest comparisons between related cards; clear suggestions while a page loads or becomes unavailable. Choosing a starter fills an editable draft. No additional AI or Anaplan requests are made to generate suggestions.
+- Use the supplied Xanaplan logo in the panel header, assistant avatars, favicon and Chrome extension icons. Preserve the original transparent PNG.
+- Reload the extension to apply these display changes. A helper already running 0.9.1 does not need restarting.
+
+## 0.9.1
+
+- Add four answer activity stages with distinct animations, a current-stage indicator and plain-language operation labels. Stage changes follow real events, including repeated data reads; reduced-motion preferences disable animation.
+- Show page-loading stages, elapsed time and Stop. Reuse recent page definitions for selector-only changes and use a model-wide saved-view catalog before checking the owning module, avoiding scans of unrelated modules.
+- Offer both History choices: continue on the current page, or restore the saved page and selections after fresh access and membership checks. Preserve independent card filters and reject changed or unavailable saved contexts.
+- Display “App & page” above an expanded picker and the page name when collapsed. Automatically collapse a picker opened for an error after recovery.
+- Restart the helper and reload the extension. No additional permissions are needed.
+
+## 0.9.0
+
+- Show actual answer activity as it happens: AI-provider waits, Anaplan reads, formula checks, source preparation and saving. Include an elapsed timer, expandable operation log, connected-helper heartbeats and an inline Stop control. Report a dropped or stalled stream instead of waiting indefinitely without feedback.
+- Reclaim vertical space with a hamburger menu for Assistant, History and Admin, a header New chat button, and an expandable page row. Keep the conversation scrolling separately above a bottom composer. Right-align user bubbles and render assistant answers with safe basic Markdown, tables and Copy answer.
+- Let saved chats continue on the current verified page after an explicit Continue on this page action. Mark context changes, retain previous messages and sources, and require fresh evidence for follow-ups. Revision checks and current-page access restrictions still apply.
+- Distinguish unsupported reports from unknown page types. Preserve the page list after either error so a supported board or worksheet can be selected.
+- Add synthetic stream, cancellation, heartbeat, formatting, navigation and context-continuation coverage. Restart the helper and reload the extension to apply the update; no new extension permissions are required.
+
 ## 0.8.2
 
 - Use captured page/card selections when a question leaves its customer, period or other context implicit. Investigate the selected parent member before asking the user to choose a child account.

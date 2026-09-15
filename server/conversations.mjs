@@ -46,9 +46,12 @@ export class ConversationStore {
     try { record = this.get(id); } catch (error) { if (error.status !== 404) throw error; }
     const scopeKey = `${scope.key}:${scope.revision}:ai-${llm.revision}:page-${pageContext?.fingerprint || 'none'}`;
     if ((input.conversationRevision ?? 0) !== (record?.revision ?? 0)) throw new AppError('This conversation changed in another panel. Reopen it from History before continuing.', 409);
-    if (record && record.scopeKey !== scopeKey) throw new AppError('This conversation uses a different app, page or context. Start a new chat for the current page.', 409);
+    const changingContext = record && record.scopeKey !== scopeKey;
+    if (changingContext && input.continueInCurrentContext !== true) throw new AppError('This conversation uses a different app, page or context. Choose Continue on this page in History, or start a new chat.', 409);
     if (record?.messages.length >= 200) throw new AppError('This conversation is full. Start a new chat; it remains available in History.', 422);
-    return record || { version: 1, id, scopeKey, title: '', app: { key: scope.key, name: scope.name, tenantName: scope.tenantName || '' }, page: pageContext ? { ...pageContext.page, modelName: pageContext.model.name } : null, llm: { provider: llm.provider, model: llm.model, revision: llm.revision }, createdAt: new Date().toISOString(), revision: 0, messages: [] };
+    const current = { scopeKey, app: { key: scope.key, name: scope.name, tenantName: scope.tenantName || '' }, page: pageContext ? { ...pageContext.page, modelName: pageContext.model.name } : null, llm: { provider: llm.provider, model: llm.model, revision: llm.revision } };
+    if (changingContext) return { ...record, ...current, pendingContextChange: { from: { app: record.app.name, page: record.page?.name || '', provider: record.llm?.provider }, to: { app: current.app.name, page: current.page?.name || '', provider: current.llm.provider } } };
+    return record || { version: 1, id, ...current, title: '', createdAt: new Date().toISOString(), revision: 0, messages: [] };
   }
   saveTurn(record, question, result) {
     let current;
@@ -57,8 +60,9 @@ export class ConversationStore {
     const now = result.answeredAt || new Date().toISOString();
     const pageContext = result.pageContext ? structuredClone(result.pageContext) : undefined;
     if (pageContext) delete pageContext.selectionContext; // Filter provenance is already on each source.
-    const next = { ...record, title: record.title || question.replace(/\s+/g, ' ').slice(0, 100), updatedAt: now, revision: record.revision + 1,
-      messages: [...record.messages, { role: 'user', text: question, createdAt: now }, { role: 'assistant', text: result.answer, sources: result.sources, revision: result.revision, pageContext, createdAt: now }],
+    const { pendingContextChange, ...savedRecord } = record;
+    const next = { ...savedRecord, title: record.title || question.replace(/\s+/g, ' ').slice(0, 100), updatedAt: now, revision: record.revision + 1,
+      messages: [...record.messages, { role: 'user', text: question, createdAt: now, ...(pendingContextChange ? { contextChange: pendingContextChange } : {}) }, { role: 'assistant', text: result.answer, sources: result.sources, revision: result.revision, pageContext, createdAt: now }],
     };
     const data = JSON.stringify(next);
     if (Buffer.byteLength(data) > MAX_BYTES) throw new AppError('This conversation is too large to save. Start a new chat; earlier saved messages remain in History.', 422);

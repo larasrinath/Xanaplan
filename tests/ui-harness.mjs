@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Store } from '../server/store.mjs';
 import { createApp } from '../server/app.mjs';
 import { AppError } from '../server/validation.mjs';
-import { request } from './http-client.mjs';
+import { request, streamRequest } from './http-client.mjs';
 import { app, appId, pageId, secondPageId, model, board, catalog, observation, syntheticMcp } from './fixtures/page.mjs';
 
 const extension = new URL('../extension/', import.meta.url);
@@ -54,7 +54,8 @@ const discoveryService = createDiscoveryService({runtime},{read:(input,options)=
 const pageService = createPageService({runtime},{read:(input,options)=>readPageDefinition(input,{...options,fetchImpl:fixtureFetch}),observe:async()=>{const response=await fetch('/test/page');return response.json();}});
 const syntheticChrome = {runtime:{sendMessage:async message=>{try{return await (message.target==='page-background'?pageService:discoveryService)(message,sender);}catch(error){return {ok:false,error:error.message};}}}};
 `;
-const assets = new Set(['panel.html', 'panel.js', 'panel.css', 'local-api.mjs', 'conversation-view.mjs', 'chat-history.mjs', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs', 'page-api.mjs', 'page-observer.mjs', 'page-background.mjs', 'page-panel.mjs']);
+const assets = new Set(['panel.html', 'panel.js', 'panel.css', 'local-api.mjs', 'chat-stream.mjs', 'question-progress.mjs', 'answer-markdown.mjs', 'conversation-view.mjs', 'chat-history.mjs', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs', 'page-api.mjs', 'page-observer.mjs', 'page-background.mjs', 'page-panel.mjs']);
+assets.add('welcome.mjs'); assets.add('assets/xanaplan-logo.png');
 const server = createServer(async (req, res) => {
   if (req.headers.host !== `127.0.0.1:${port}`) return send(res, 403, {});
   res.setHeader('Cache-Control', 'no-store');
@@ -62,6 +63,15 @@ const server = createServer(async (req, res) => {
   try {
     let input = ''; for await (const chunk of req) { input += chunk; if (input.length > 180000) return send(res, 413, {}); }
     if (url.pathname.startsWith('/api/')) {
+      if (['/api/chat', '/api/page-context'].includes(url.pathname) && input && JSON.parse(input).stream) {
+        const controller = new AbortController();
+        res.on('close', () => { if (!res.writableEnded) controller.abort(); });
+        const response = await streamRequest(helper, store, req.method, url.pathname.slice(4), JSON.parse(input), { signal: controller.signal });
+        res.writeHead(response.status, { 'Content-Type': response.headers.get('content-type') });
+        for await (const chunk of response.body) { if (res.destroyed) break; res.write(chunk); }
+        if (!res.destroyed) res.end();
+        return;
+      }
       const result = await request(helper, store, req.method, url.pathname.slice(4) + url.search, input ? JSON.parse(input) : undefined);
       return send(res, result.status, result.body);
     }
@@ -100,7 +110,7 @@ const server = createServer(async (req, res) => {
     }
     const file = url.pathname.slice(1);
     if (!assets.has(file)) return send(res, 404, {});
-    res.setHeader('Content-Type', /\.(mjs|js)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
+    res.setHeader('Content-Type', /\.(mjs|js)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.png') ? 'image/png' : 'text/html');
     return res.end(readFileSync(new URL(file, extension)));
   } catch (error) { return send(res, 500, { error: `Synthetic harness: ${error.message}` }); }
 });

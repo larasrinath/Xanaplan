@@ -8,7 +8,7 @@ import { AppError } from './validation.mjs';
 export const READ_TOOLS = new Set([
   'show_modules', 'show_moduledetails', 'show_lineitems', 'show_savedviews',
   'show_viewdetails', 'show_lists', 'get_list_items', 'show_dimensionitems',
-  'show_viewdimensionitems', 'show_lineitem_dimensions', 'show_lineitem_dimensions_items',
+  'show_viewdimensionitems', 'show_lineitem_dimensions', 'show_lineitem_dimensions_items', 'show_allviews',
   'lookup_dimensionitems', 'show_currentperiod', 'show_modelcalendar', 'show_versions', 'read_cells',
 ]);
 const DISCOVERY_TOOLS = new Set(['show_workspaces', 'show_models']);

@@ -56,10 +56,20 @@ export class ChatHistory {
     finally { if (sequence === this.sequence) { this.loading = false; this.changed(); } }
   }
   back() { ++this.sequence; this.loading = false; this.viewed = null; this.listOpen = false; this.changed(); }
+  continueHere(key) {
+    if (!this.viewed || this.viewed.saveError || !key || this.loading) return;
+    const record = this.viewed;
+    ++this.sequence;
+    // A single mutable thread per saved conversation avoids stale revisions
+    // when returning to a context from which this conversation was continued.
+    for (const [scope, thread] of this.threads) if (thread.id === record.id) this.threads.delete(scope);
+    this.threads.set(key, { id: record.id, revision: record.revision, messages: structuredClone(record.messages), loaded: true, continueInCurrentContext: record.scopeKey !== key });
+    this.viewed = null; this.listOpen = false; this.changed();
+  }
   saved(thread, result) {
     thread.saveError = result.historyError || '';
     if (result.conversation) {
-      Object.assign(thread, { id: result.conversation.id, revision: result.conversation.revision });
+      Object.assign(thread, { id: result.conversation.id, revision: result.conversation.revision, continueInCurrentContext: false });
       this.records = [result.conversation, ...this.records.filter(item => item.id !== result.conversation.id)];
     }
     this.changed();
@@ -73,17 +83,19 @@ export class ChatHistory {
   }
 }
 
-export function renderChatHistory(document, history, { scopeKey, busy, open, remove }) {
-  const $ = id => document.getElementById(id), thread = history.current(scopeKey);
+export function renderChatHistory(document, history, { scopeKey, activeThread, busy, open, remove, currentPage = '', canRestoreSaved = false, restoring = '' }) {
+  const $ = id => document.getElementById(id), thread = activeThread || history.current(scopeKey);
   $('chat-history').hidden = !history.listOpen;
   $('history-toggle').setAttribute('aria-expanded', String(history.listOpen));
   $('history-toggle').disabled = busy;
   $('new-chat').disabled = busy || history.loading || !scopeKey;
   $('history-refresh').disabled = history.loading || busy;
+  $('history-continue').disabled = busy || history.loading || !scopeKey || Boolean(history.viewed?.saveError);
+  $('history-use-saved').disabled = busy || history.loading || !canRestoreSaved;
   $('history-status').textContent = history.loading ? 'Loading saved chats…' : history.error || 'Saved on this computer.';
   $('history-status').dataset.error = String(Boolean(history.error));
-  $('chat-save-status').textContent = thread?.saveError ? 'Not saved' : thread?.loadError ? 'History unavailable' : thread?.loading || !history.ready ? 'Loading chats…' : busy ? 'Answering…' : thread?.revision ? 'Saved locally' : '';
-  $('chat-save-status').dataset.error = String(Boolean(thread?.saveError || thread?.loadError || history.error));
+  $('chat-save-status').textContent = history.viewed?.saveError || thread?.saveError ? 'Not saved' : thread?.loadError ? 'History unavailable' : thread?.loading || !history.ready ? 'Loading chats…' : busy ? 'Answering…' : history.viewed?.revision || thread?.revision ? 'Saved locally' : '';
+  $('chat-save-status').dataset.error = String(Boolean(history.viewed?.saveError || thread?.saveError || thread?.loadError || history.error));
   const query = $('history-search').value;
   const records = history.records.filter(record => matchesSearch(`${record.title} ${record.app.name} ${record.app.tenantName} ${record.page?.name || ''}`, query));
   $('history-list').replaceChildren();
@@ -96,6 +108,7 @@ export function renderChatHistory(document, history, { scopeKey, busy, open, rem
     title.textContent = record.title; meta.textContent = `${record.app.name}${record.page ? ` · ${record.page.name}` : ''}`;
     button.title = `${record.title}\n${meta.textContent}`;
     date.textContent = new Date(record.updatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    date.textContent += record.scopeKey === scopeKey ? ' · Resume chat' : ' · Earlier context';
     button.append(title, meta, date); button.addEventListener('click', () => open(record.id));
     const trash = document.createElement('button'); trash.type = 'button'; trash.className = 'text-button history-delete'; trash.textContent = 'Delete'; trash.setAttribute('aria-label', `Delete chat: ${record.title}`); trash.disabled = busy || history.loading;
     trash.addEventListener('click', () => remove(record)); row.append(button, trash); $('history-list').append(row);
@@ -109,5 +122,8 @@ export function renderChatHistory(document, history, { scopeKey, busy, open, rem
   if (archived) {
     $('saved-chat-title').textContent = archived.title;
     $('saved-chat-context').textContent = `${archived.app.name}${archived.page ? ` · ${archived.page.name}` : ''} · ${new Date(archived.updatedAt).toLocaleString()}`;
+    $('saved-chat-reason').textContent = archived.saveError ? 'This answer could not be saved. Copy it before starting a new chat.' : restoring || (scopeKey
+      ? `Continue using ${currentPage || 'the current page'}, or restore this chat’s saved page and selections. Earlier answers keep their original context.`
+      : canRestoreSaved ? 'Restore this chat’s saved page and selections, or go back and choose a current page.' : 'Enable this chat’s app in Admin to restore its page, or go back and choose a current page.');
   }
 }

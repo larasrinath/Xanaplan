@@ -1,12 +1,12 @@
 # Assistant flow review and discussion plan
 
-Reviewed against the 0.7.0 implementation and synthetic API/DOM acceptance tests on 2026-09-12; updated after live feedback on 2026-09-13. Version 0.7.3 implements the first module-evidence path in item 1 and the decorative-source fix in item 2. Version 0.8.2 adds view-member fallback for captured selections and verifies fixed hidden line-item defaults after a live chat unnecessarily asked for a customer already selected on the page. The remaining recommendations are discussion items. Live Anaplan count validation is in progress.
+Reviewed against the 0.7.0 implementation and synthetic API/DOM acceptance tests on 2026-09-12; updated after live feedback on 2026-09-13. Version 0.7.3 implements the first module-evidence path in item 1 and the decorative-source fix in item 2. Version 0.8.2 adds view-member fallback for captured selections and verifies fixed hidden line-item defaults after a live chat unnecessarily asked for a customer already selected on the page. Updated for 0.9.3: explicit cross-context continuation, saved-selection recovery, navigation-safe answers, automatic app matching and the compact page menu are implemented. Remaining recommendations below require live validation or a separate product decision.
 
 ## End-to-end assessment
 
 The core sequence is coherent: connect AI and Anaplan in Admin → choose tenant/app → verify model membership → save business context → select the app in Assistant → identify or choose a page → confirm the page and visible selection values → ask → inspect sources. The user does not map modules manually. Chat-only page changes and query overrides preserve the browser's position.
 
-The local checks exercise that path through production helper routes, then exercise the actual panel controller with a synthetic DOM. Revision checks and page tickets prevent stale app/model use. Context changes cancel stale answers and retain histories under their original snapshots. Those checks establish local control flow; they do not establish live schema compatibility, visual quality or numerical accuracy.
+The local checks exercise that path through production helper routes, then exercise the actual panel controller with a synthetic DOM. Revision checks and page tickets prevent stale app/model use. Context changes preserve running answers and their original snapshots; explicit Stop cancels them. Those checks establish local control flow; they do not establish live schema compatibility, visual quality or numerical accuracy.
 
 The main weakness is conflating exact card reproduction with the ability to answer from its underlying modules. Current MCP reads expose saved/default views and page-dimension selections. Many real cards use custom queries, runtime filters, row/column selection, or multiple selected items. Blocking an unverified claim about the displayed card is appropriate; blocking all module data investigation because a card is custom is too restrictive for the approved module-first assistant.
 
@@ -36,25 +36,23 @@ The current app/page/model selection sequence is understandable, but failures ca
 
 Version 0.8.1 removes technical context diagnostics from the Assistant after business-user feedback. Keep partial-page readiness internal; explain an unresolved business selection only when it affects the question. Do not reintroduce per-card warnings or module availability disclosures on the start page. Answers must still avoid implying that page totals are complete when evidence is missing. Also classify static text/action sources correctly: the live page currently shows invalid-model-object-ID errors for TEXT and ACTION entries. Preserve genuinely data-bound text/images, but do not treat decorative or action identifiers as module/view IDs.
 
-### 3. Revisit conversation continuity across filter changes
+### 3. Validate the implemented continuation choices
 
-Version 0.8.0 adds persistent local History, search, New chat and archive review, so conversations are no longer lost when the panel closes. Version 0.8.1 retains the compact app/page header and replaces the Context details disclosure with a short summary of confirmed page selection values. Matching snapshots can resume after reopening; the filter-based continuation rule below remains unchanged and is still a discussion item.
+Version 0.9.3 preserves the original context of a running answer while pages or selectors change. It keeps the completed answer visible and offers **Continue on this page** and **Use saved page & selections**. Both choices retain earlier sources; new questions use fresh verification and a context-change marker when appropriate. Saved unknown selectors stay unknown. Failed restoration leaves the current context usable.
 
-Current behavior isolates histories by the entire page/model/filter fingerprint. This avoids mixing evidence from incompatible contexts, and returning to the same fingerprint restores its thread, but changing a period can appear to erase the conversation.
+Idle context changes still select a thread by the full app/model/page/filter/AI fingerprint. Whether they should automatically carry the current conversation into another context remains a separate product decision. Validate the existing explicit choices with users before changing that default. See [saved chat behavior](chat-history.md).
 
-Proposed behavior: one conversation per app/page/model, visible context-change markers, and a frozen context attached to each turn. Only compatible history should be sent to the AI; old numerical answers must never substitute for fresh reads. Keep manual-page pins and query overrides clearly distinct. Discuss this before changing the current isolation rule.
+### 4. Measure page-loading latency after the implemented optimizations
 
-### 4. Reduce the first-answer wait using measured metadata caching
+The tracker reuses a recent published definition for selector-only changes while re-verifying selections. Explicit Refresh fetches a new definition. Saved-view discovery first uses a model-wide view catalog and verifies ownership in the reported module, with bounded module scans as a fallback. Actual loading stages and elapsed time are visible, with cancellation and a total deadline.
 
-Saved-view ownership currently may require scanning modules; every context change re-verifies sources and labels. Measure first-page and repeat-question latency tomorrow. Add a direct MCP view-owner lookup first, then cache structural metadata by model and page-definition revision. Refresh selections per question and invalidate on connection/app changes. Do not persist observed business values simply to speed up discovery.
-
-Set a latency target after observing the real app; keep one bounded request path and clear progress during metadata resolution.
+Measure first-page, repeat-page and first-answer latency in the live app. Use those measurements to decide whether additional model-level metadata caching is useful. Keep selection verification fresh and do not persist observed business values to accelerate discovery.
 
 ## Suggested order after live testing
 
 1. Record schema differences and fix adapter mismatches found on one known board and worksheet.
 2. Prioritize module evidence and scope resolution for the reported Existing Stores question; extend the MCP only for demonstrated read/filter gaps, with the acceptance cases above.
 3. Add targeted readiness/recovery UI once real failure modes are known.
-4. Decide the conversation-continuity rule and metadata-cache bounds using the measured experience.
+4. Validate the continuation choices and decide any further caching or idle-thread behavior from measured experience.
 
 Keep the current local, read-only deployment model for this discussion. Shared administration and hosting remain in their existing future plan.

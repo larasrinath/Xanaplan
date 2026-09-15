@@ -29,7 +29,8 @@ export function pageCatalog(data, app) {
     const id = guid(page.identifier);
     if (seen.has(id) || (page.appGuid && guid(page.appGuid) !== app.appId)) fail('Anaplan returned conflicting page membership.');
     seen.add(id);
-    return { id, name: name(page.name), type: ({ BOARD: 'boards', GRID: 'worksheets', REPORT: 'reports', board: 'boards', worksheet: 'worksheets', report: 'reports' })[page.pageType] || 'unsupported' };
+    const type = typeof page.pageType === 'string' ? page.pageType.trim().toUpperCase() : '';
+    return { id, name: name(page.name), type: ({ BOARD: 'boards', 'GRID-PAGE': 'worksheets', GRID: 'worksheets', WORKSHEET: 'worksheets', REPORT: 'reports' })[type] || 'unsupported' };
   });
 }
 
@@ -63,7 +64,7 @@ export function pageDefinition(data, page, app) {
     widgets = list(data.widgets).map(widget => widget.widgetDefinition || fail('Unrecognized worksheet card.'));
     // The main worksheet grid is a separate source, outside its insight cards.
     if (data.dataSourceId || data.widgetDataSources?.length) widgets.unshift({ ...data, type: 'TABLE', clientGuid: `mainGrid:${page.id}`, defaultTitle: page.name });
-  } else fail('Report pages are not supported yet. Select a board or worksheet.');
+  } else fail(page.type === 'reports' ? 'Xanaplan cannot read report pages yet. Choose a board or worksheet for chat.' : 'Xanaplan does not recognize this page type. Choose a supported page for chat.');
   list(widgets);
   const sources = [], warnings = [];
   let queryBudget = 40000;
@@ -118,7 +119,9 @@ export async function readPageDefinition(input, options = {}) {
   const page = pages.find(page => page.id === guid(input.pageId));
   if (!page) fail('This published page is not available in the selected app.');
   const route = { boards: 'boards', worksheets: 'grid-pages' }[page.type];
-  if (!route) fail('Select a board or worksheet. Report pages are not supported yet.');
+  if (!route) return { pages, unavailableReason: page.type === 'reports'
+    ? 'Xanaplan cannot read report pages yet. Choose a board or worksheet for chat.'
+    : 'Xanaplan does not recognize this page type. Choose a supported page for chat.' };
   const result = pageDefinition(await get(`/${route}/${page.id}`, 'page definition'), page, app);
   const after = pageCatalog(await get(details, 'published pages', '2'), app);
   if (!after.some(item => item.id === page.id && item.type === page.type)) fail('The page changed during discovery. Refresh page context.');

@@ -1,5 +1,7 @@
+import { readChatStream } from './chat-stream.mjs';
+
 export function createLocalApi(getConnection, { fetchImpl = globalThis.fetch } = {}) {
-  return async function api(path, { method = 'GET', body, signal } = {}) {
+  return async function api(path, { method = 'GET', body, signal, onProgress } = {}) {
     const connection = getConnection();
     if (!connection) throw new Error('Start the local helper with npm start, then reload this extension in Chrome.');
     let response;
@@ -13,6 +15,7 @@ export function createLocalApi(getConnection, { fetchImpl = globalThis.fetch } =
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       throw new Error('Cannot reach the local helper. Run npm start in the Xanaplan folder, then select Check.');
     }
+    if (response.ok && onProgress && response.headers.get('content-type')?.includes('application/x-ndjson')) return readChatStream(response, { signal, onProgress });
     const data = await response.json();
     if (!response.ok) {
       if (response.status === 404 && (path === '/page-context' || path === '/conversations') && data.error === 'Not found.') {

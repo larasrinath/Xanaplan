@@ -1,3 +1,5 @@
+import { renderAnswer } from './answer-markdown.mjs';
+
 const toolLabels = {
   show_modules: 'Model modules', show_moduledetails: 'Module dimensions', show_lineitems: 'Line items',
   show_savedviews: 'Saved views', show_viewdetails: 'View dimensions', show_lists: 'Model lists',
@@ -13,13 +15,32 @@ export function renderConversation(document, { messages, hasApps }) {
   $('first-app').hidden = hasApps;
   $('messages').replaceChildren();
   for (const message of messages) {
+    if (message.contextChange) {
+      const divider = document.createElement('p'); divider.className = 'context-change';
+      divider.textContent = `Context changed · ${message.contextChange.to.page || message.contextChange.to.app}`;
+      $('messages').append(divider);
+    }
     const article = document.createElement('article'); article.className = `message ${message.role}`;
     const role = document.createElement('div'); role.className = 'role'; role.textContent = message.role === 'user' ? 'You' : 'Xanaplan';
-    const body = document.createElement('div'); body.className = 'body'; body.textContent = message.text;
+    if (message.role === 'assistant') {
+      const avatar = document.createElement('img'); avatar.className = 'assistant-avatar'; avatar.src = 'assets/xanaplan-logo.png'; avatar.alt = ''; avatar.width = 24; avatar.height = 24;
+      role.prepend(avatar);
+    }
+    const body = document.createElement('div'); body.className = 'body';
+    if (message.role === 'assistant') body.append(renderAnswer(document, message.text)); else body.textContent = message.text;
     article.append(role, body);
+    if (message.role === 'assistant') {
+      const actions = document.createElement('div'); actions.className = 'answer-actions';
+      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button copy-answer'; copy.textContent = 'Copy answer';
+      copy.addEventListener('click', async () => {
+        try { await document.defaultView.navigator.clipboard.writeText(message.text); copy.textContent = 'Copied'; }
+        catch { copy.textContent = 'Select text to copy'; }
+      });
+      actions.append(copy); article.append(actions);
+    }
     if (message.pageContext) {
       const context = document.createElement('p'); context.className = 'answer-context';
-      context.textContent = `${message.pageContext.page.name} · ${message.pageContext.model.name} · ${message.pageContext.mode === 'manual' ? 'Chosen for chat' : 'Tab context'}`;
+      context.textContent = `${message.pageContext.page.name} · ${message.pageContext.model.name} · ${message.pageContext.mode === 'saved' ? 'Saved chat context' : message.pageContext.mode === 'manual' ? 'Chosen for chat' : 'Tab context'}`;
       article.append(context);
     }
     if (message.sources?.length) {

@@ -4,7 +4,7 @@ import { verifyPageContext } from '../server/page-context.mjs';
 import { createPageScope, formulaReferences } from '../server/page-scope.mjs';
 import { metadataTable } from '../server/page-metadata.mjs';
 import { pageDefinition } from '../extension/page-api.mjs';
-import { app, pageId, board, observation, model, syntheticMcp } from './fixtures/page.mjs';
+import { app, pageId, board, observation, model, syntheticMcp, table } from './fixtures/page.mjs';
 
 export async function contextFixture(options = {}) {
   const mcp = syntheticMcp();
@@ -80,4 +80,42 @@ test('formula parsing handles quoted names, SUM/LOOKUP mappings and ignores text
 test('metadata parser rejects truncation and correctly preserves escaped formula pipes', () => {
   assert.throws(() => metadataTable('100 more not shown'), /incomplete/);
   assert.equal(metadataTable('| Name | Text |\n| ID | 123 |\n| Formula | "A\\|B" |')[0].Formula, '"A|B"');
+});
+
+test('model-wide view lookup avoids scanning unrelated modules and still verifies the owning module', async () => {
+  const definition = pageDefinition(board, { id: pageId, type: 'boards' }, app);
+  const calls = [];
+  for (const fast of [false, true]) {
+    const mcp = syntheticMcp(), read = mcp.read, tools = mcp.tools;
+    if (fast) mcp.tools = async () => [...await tools(), { name: 'show_allviews' }];
+    mcp.read = async (tool, args, ...rest) => {
+      if (tool === 'show_modules') return { text: table([{ ID: '101', Name: 'Revenue' }, ...Array.from({ length: 50 }, (_, i) => ({ ID: String(i + 110), Name: `Other ${i}` }))]) };
+      if (tool === 'show_allviews') return { text: table([{ ID: '901', Name: 'Budget', Module: 'Revenue' }]) };
+      return read(tool, args, ...rest);
+    };
+    const context = await verifyPageContext({ app, mcp, input: { revision: 1, definition, observation } });
+    assert.equal(context.sources[1].moduleId, '101'); assert.equal(context.sources[1].unsupported, false);
+    calls.push(mcp.calls.filter(call => call.tool === 'show_savedviews').length);
+  }
+  assert.deepEqual(calls, [51, 1]);
+});
+
+test('view lookup rejects incomplete or denied results and checks reported ownership before using it', async () => {
+  const definition = pageDefinition(board, { id: pageId, type: 'boards' }, app);
+  for (const result of ['wrong-owner', 'incomplete', 'denied', 'unavailable']) {
+    const mcp = syntheticMcp(), read = mcp.read, tools = mcp.tools;
+    mcp.tools = async () => [...await tools(), { name: 'show_allviews' }];
+    mcp.read = async (tool, args, ...rest) => {
+      if (tool === 'show_allviews') {
+        if (result === 'denied' || result === 'unavailable') throw Object.assign(new Error(result), { status: result === 'denied' ? 403 : 404 });
+        return { text: result === 'incomplete' ? '100 more not shown' : table([{ ID: '901', Name: 'Budget', Module: 'Unrelated' }]) };
+      }
+      return read(tool, args, ...rest);
+    };
+    const verify = verifyPageContext({ app, mcp, input: { revision: 1, definition, observation } });
+    if (result === 'denied') { await assert.rejects(verify, /denied/); continue; }
+    const context = await verify;
+    if (result === 'incomplete') assert.equal(context.sources[1].unsupported, true);
+    else { assert.equal(context.sources[1].moduleId, '101'); assert.equal(context.sources[1].unsupported, false); }
+  }
 });

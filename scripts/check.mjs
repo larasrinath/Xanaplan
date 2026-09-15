@@ -22,9 +22,10 @@ const manifest = JSON.parse(readFileSync('extension/manifest.json'));
 const pkg = JSON.parse(readFileSync('package.json'));
 if (manifest.version !== pkg.version) throw new Error('Package and extension versions must match.');
 for (const file of [manifest.background.service_worker, manifest.side_panel.default_path]) readFileSync(`extension/${file}`);
+for (const file of new Set([...Object.values(manifest.icons || {}), ...Object.values(manifest.action.default_icon || {})])) readFileSync(`extension/${file}`);
 verifyServiceWorkerImports(`extension/${manifest.background.service_worker}`);
 const panel = join('extension', manifest.side_panel.default_path);
-for (const [, asset] of readFileSync(panel, 'utf8').matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)=["']([^"']+)["']/g)) {
+for (const [, asset] of readFileSync(panel, 'utf8').matchAll(/<(?:script|link|img)\b[^>]*\b(?:src|href)=["']([^"']+)["']/g)) {
   readFileSync(resolve(dirname(panel), asset));
 }
 if (manifest.action.default_popup) throw new Error('Assistant must open in the Chrome side panel.');

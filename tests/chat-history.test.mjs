@@ -34,3 +34,15 @@ test('late archive loads cannot replace a newer selection or a new chat', async 
   assert.equal(history.current('page-a').messages.length, 0);
   assert.equal(history.loading, false);
 });
+
+test('explicit current-context continuation retains the saved ID, marks the change, and clears stale cached scopes', async () => {
+  const history = new ChatHistory({ api }); await history.refresh(); history.current('page-a'); await tick();
+  await history.open(record.id, () => 'page-b'); history.continueHere('page-b');
+  const thread = history.current('page-b');
+  assert.equal(thread.id, record.id); assert.equal(thread.continueInCurrentContext, true);
+  assert.equal(thread.messages.length, 2); assert.equal(history.threads.has('page-a'), false);
+  assert.equal(history.viewed, null);
+  history.saved(thread, { conversation: { ...record, scopeKey: 'page-b', revision: 2 } });
+  assert.equal(thread.continueInCurrentContext, false); assert.equal(history.records[0].scopeKey, 'page-b');
+  assert.equal(history.current('page-a').messages.length, 0);
+});

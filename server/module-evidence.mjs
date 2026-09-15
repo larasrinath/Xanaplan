@@ -14,7 +14,8 @@ export async function moduleSelections({ context, source, dimensions, viewId, mo
   const ownOptions = source.options || [];
   const observed = selections.filter(item => item.cardId === '' || item.cardId === source.cardId);
   const axes = Object.values(dimensions).flat();
-  const ids = new Set([...axes.map(item => item.id), ...options.map(item => item.dimensionId), ...ownOptions.map(item => item.dimensionId), ...observed.map(item => item.dimensionId)]);
+  const savedFilters = mode === 'saved' ? context.selectionContext.savedSources?.find(item => item.id === source.id)?.filters || [] : [];
+  const ids = new Set([...axes.map(item => item.id), ...options.map(item => item.dimensionId), ...ownOptions.map(item => item.dimensionId), ...observed.map(item => item.dimensionId), ...savedFilters.map(item => item.dimensionId)]);
   const requirements = [];
   for (const dimensionId of ids) {
     if (!objectId(dimensionId)) continue;
@@ -25,7 +26,10 @@ export async function moduleSelections({ context, source, dimensions, viewId, mo
     const dimensionName = axes.find(item => item.id === dimensionId)?.name || own?.dimensionName || page?.dimensionName || `Selection ${dimensionId}`;
     const requirement = { dimensionId, dimensionName };
     let selection;
-    if (mode === 'follow' && rendered && active.length === 1 && !active[0].scope && !active[0].unresolved) selection = { label: active[0].label, origin: card.length ? 'card selection' : 'page selection' };
+    if (mode === 'saved') {
+      const saved = savedFilters.filter(item => item.dimensionId === dimensionId);
+      if (saved.length === 1) selection = { itemId: saved[0].itemId, origin: 'saved selection' };
+    } else if (mode === 'follow' && rendered && active.length === 1 && !active[0].scope && !active[0].unresolved) selection = { label: active[0].label, origin: card.length ? 'card selection' : 'page selection' };
     else if (mode === 'manual') {
       if (inheritedModelKey === context.model.key && own?.synced !== false && shared.length === 1 && !shared[0].scope && !shared[0].unresolved) selection = { label: shared[0].label, origin: 'inherited from tab' };
       else {
@@ -33,7 +37,7 @@ export async function moduleSelections({ context, source, dimensions, viewId, mo
         if (option?.itemId && !option.unsupported) selection = { itemId: option.itemId, origin: 'page default' };
       }
     }
-    const fixedLineItem = dimensionId === '20000000012' && own?.scope === moduleId && own?.synced === false && own?.visible === false && own?.advanced === false && objectId(own.itemId) && !active.length;
+    const fixedLineItem = dimensionId === '20000000012' && own?.scope === moduleId && own?.synced === false && own?.visible === false && own?.advanced === false && objectId(own.itemId) && !active.length && (mode !== 'saved' || savedFilters.some(item => item.dimensionId === dimensionId && item.itemId === own.itemId));
     if (fixedLineItem) selection = { itemId: own.itemId, origin: 'card default' };
     if (dimensionId === '20000000012' && source.lineItemId && moduleId === source.moduleId) selection = { itemId: source.lineItemId, origin: 'card source' };
     if (!selection && !own && !page && !active.length && !dimensions.pages.some(item => item.id === dimensionId)) continue;
@@ -91,6 +95,11 @@ export async function readModuleEvidence({ context, source, args, read, mcp, mod
   const missing = dimensions.pages.filter(item => !effectiveFilters.some(filter => filter.dimensionId === item.id));
   if (missing.length) throw new AppError(`Specify ${missing.map(item => item.name).join(', ')} for this module view before reading cells.`, 422);
   const pendingFilters = requirements.filter(item => !pageIds.has(item.dimensionId));
+  const savedMissing = (source.savedMissing || []).filter(message => !requirements.some(item => {
+    if (item.origin !== 'question override' || item.issue) return false;
+    const names = [item.dimensionName, `Selection ${item.dimensionId}`, ...Object.values(dimensions).flat().filter(dimension => dimension.id === item.dimensionId).map(dimension => dimension.name)];
+    return names.some(name => name && message.startsWith(`${name}:`));
+  }));
   const maxRows = Math.min(1000, Math.max(1, Math.floor(Number(args.maxRows) || 1000)));
   const result = await mcp.read('read_cells', { moduleId: args.moduleId, viewId, maxRows, pages: effectiveFilters.map(({ dimensionId, itemId }) => ({ dimensionId, itemId })) }, model, signal);
   let partial = /_truncated|more not shown/i.test(result.text);
@@ -103,7 +112,7 @@ export async function readModuleEvidence({ context, source, args, read, mcp, mod
     coverage: { kind: 'module evidence', exactCard: false,
       partial,
       note: 'The helper applied only effectiveFilters. Verify card membership and all pendingFilters against query metadata, line items, formulas and returned data before answering about this card. Module rows are not automatically card rows. Verify complete coverage and distinct leaf records before counting; a row cap or truncated response cannot establish a total.',
-      unresolvedContext: [...requirements.filter(item => item.issue).map(item => `${item.dimensionName}: ${item.issue}`), ...(context.selectionContext.mode === 'follow' && !context.selectionContext.rendered ? ['Live page selections could not be observed.'] : []), ...(context.selectionContext.selections.some(item => item.cardId === '?') ? ['A live selector could not be associated with its card.'] : [])],
+      unresolvedContext: [...new Set([...requirements.filter(item => item.issue).map(item => `${item.dimensionName}: ${item.issue}`), ...savedMissing, ...(context.selectionContext.mode === 'follow' && !context.selectionContext.rendered ? ['Live page selections could not be observed.'] : []), ...(context.selectionContext.selections.some(item => item.cardId === '?') ? ['A live selector could not be associated with its card.'] : [])])],
     },
   };
 }

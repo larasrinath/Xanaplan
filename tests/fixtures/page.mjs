@@ -3,7 +3,7 @@ export const pageId = '00000000-0000-0000-0000-000000000002';
 export const secondPageId = '00000000-0000-0000-0000-000000000003';
 export const model = { key: `${'A'.repeat(32)}:${'B'.repeat(32)}`, workspaceId: 'A'.repeat(32), modelId: 'B'.repeat(32), name: 'Synthetic planning', workspaceName: 'Synthetic workspace' };
 export const app = { key: `https://us1a.app.anaplan.com|testtenant|${appId}`, appId, origin: 'https://us1a.app.anaplan.com', tenantId: 'testtenant', tenantName: 'Test tenant', name: 'Planning', models: [model], context: 'Synthetic test data', revision: 1 };
-export const catalog = { guid: appId, customerId: app.tenantId, pages: [{ identifier: pageId, name: 'Performance', pageType: 'BOARD', appGuid: appId, hasPublishedVersion: true }, { identifier: secondPageId, name: 'Costs', pageType: 'GRID', hasPublishedVersion: true }] };
+export const catalog = { guid: appId, customerId: app.tenantId, pages: [{ identifier: pageId, name: 'Performance', pageType: 'BOARD', appGuid: appId, hasPublishedVersion: true }, { identifier: secondPageId, name: 'Costs', pageType: 'GRID-PAGE', hasPublishedVersion: true }] };
 export const board = { pageGuid: pageId, appGuid: appId, customerId: app.tenantId, name: 'Performance', currentPublishedVersionGuid: 'published-v1',
   modelId: model.modelId, workspaceId: model.workspaceId, modelInfos: [{ ...model, modelName: model.name }],
   contextOptions: [{ dimensionId: '501', defaultValue: '601' }, { dimensionId: '502', defaultValue: '603' }],

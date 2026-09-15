@@ -3,25 +3,28 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Xanaplan · Business Assistant</title><link rel="stylesheet" href="panel.css">
+  <title>Xanaplan - Planning Assistant</title><link rel="stylesheet" href="panel.css">
+  <link rel="icon" type="image/png" href="assets/xanaplan-logo.png">
 </head>
 <body>
   <header class="masthead">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">x</span><span>Xanaplan<small>YOUR BUSINESS, IN CONTEXT</small></span></div>
-    <span class="local-badge"><span aria-hidden="true">●</span> Local</span>
+    <div class="brand"><img class="brand-mark" src="assets/xanaplan-logo.png" width="32" height="32" alt=""><span>Xanaplan</span></div>
+    <button id="new-chat" class="text-button header-new-chat" type="button" aria-label="New chat" title="New chat"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 3l5 5M10 14l1-5 8-8 5 5-8 8-5 1" transform="translate(0 1) scale(.9)"/></svg></button>
+    <details id="navigation-menu" class="navigation-menu">
+      <summary id="navigation-toggle" aria-label="Open navigation menu" title="Menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></summary>
+      <div class="navigation-popover">
+        <nav aria-label="Main views">
+          <button id="assistant-tab" aria-pressed="true" type="button">Assistant</button>
+          <button id="history-toggle" type="button" aria-expanded="false" aria-controls="chat-history">History</button>
+          <button id="admin-tab" aria-pressed="false" type="button">Admin settings</button>
+        </nav>
+        <div class="navigation-status"><span class="local-badge"><span aria-hidden="true">●</span> Local</span><span id="chat-save-status" role="status"></span></div>
+      </div>
+    </details>
   </header>
-  <nav class="view-tabs" aria-label="Main views">
-    <button id="assistant-tab" aria-pressed="true" type="button">Assistant</button>
-    <button id="admin-tab" aria-pressed="false" type="button">Admin</button>
-  </nav>
   <div id="notice" role="status" hidden></div>
   <main>
     <section id="assistant-view" aria-label="Assistant">
-      <div class="chat-toolbar">
-        <button id="history-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="chat-history">History</button>
-        <span id="chat-save-status" role="status"></span>
-        <button id="new-chat" class="text-button" type="button">+ New chat</button>
-      </div>
       <section id="chat-history" class="chat-history" aria-label="Saved chats" hidden>
         <div class="history-heading"><h2>Saved chats</h2><button id="history-refresh" class="text-button" type="button">Refresh</button></div>
         <label for="history-search" class="sr-only">Search saved chats</label><input id="history-search" type="search" placeholder="Search chats, apps or pages…" autocomplete="off" maxlength="160">
@@ -30,34 +33,51 @@
       <section id="saved-chat-heading" class="saved-chat-heading" hidden>
         <button id="history-back" class="text-button" type="button">← Back to current chat</button>
         <h2 id="saved-chat-title"></h2><p id="saved-chat-context"></p>
-        <p>This conversation uses an earlier context. You can review its messages and sources here.</p>
+        <p id="saved-chat-reason"></p>
+        <div class="history-actions"><button id="history-continue" class="primary" type="button">Continue on this page</button><button id="history-use-saved" type="button">Use saved page & selections</button></div>
       </section>
       <section id="live-context" class="page-context compact-context" aria-label="Chat context">
-        <div class="context-row"><label for="chat-app">App</label><select id="chat-app"><option value="">No enabled apps</option></select></div>
-        <div class="context-row"><label for="chat-page">Page</label><select id="chat-page"><option value="">Follow current tab</option></select><button id="refresh-page" class="text-button" type="button" aria-label="Refresh page context" title="Refresh page context">↻</button></div>
-        <div id="page-model-field" hidden><label for="page-model">Model</label><select id="page-model"><option value="">Use detected model</option></select></div>
-        <p id="page-status" role="status">Select an enabled app.</p>
+        <details id="context-controls" class="context-controls">
+          <summary title="Open page menu"><span id="current-page-label">Choose a page</span><span id="context-mode-label"></span></summary>
+          <div class="context-fields" role="group" aria-label="Page menu">
+            <div class="context-picker-actions"><button id="follow-tab" class="text-button" type="button" aria-pressed="true">Following current tab</button><button id="refresh-page" class="text-button" type="button" aria-label="Refresh page context" title="Refresh page context">↻</button></div>
+            <div class="context-row"><label for="chat-app">App</label><select id="chat-app"><option value="">No enabled apps</option></select></div>
+            <div class="context-row"><label for="chat-page">Page</label><select id="chat-page"><option value="">Follow current tab</option></select></div>
+            <div id="page-model-field" hidden><label for="page-model">Model</label><select id="page-model"><option value="">Use detected model</option></select></div>
+          </div>
+        </details>
+        <div class="page-loading"><p id="page-status" role="status">Select an enabled app.</p><button id="stop-page" class="text-button" type="button" hidden>Stop</button></div>
         <p id="page-selections" hidden></p>
       </section>
       <div id="conversation" aria-live="polite" aria-relevant="additions">
         <div id="welcome" class="welcome">
           <div class="eyebrow">A clearer view of your business</div>
-          <h1>Good questions.<br>Grounded answers.</h1>
-          <p>Explore what changed, understand the drivers, and decide what comes next.</p>
-          <div class="suggestions" aria-label="Example business questions">
-            <button type="button" data-question="How are we performing against budget this quarter?">How are we performing against budget?<span>↗</span></button>
-            <button type="button" data-question="What are the main drivers of the change in operating costs?">What is driving the change in costs?<span>↗</span></button>
-            <button type="button" data-question="Where should we focus to improve our margin, and why?">Where should we focus to improve margin?<span>↗</span></button>
-          </div>
+          <h1 id="welcome-greeting">Hello.</h1>
+          <p id="welcome-description">Welcome to Xanaplan.</p>
+          <div id="starter-questions" class="suggestions" aria-label="Questions for this page" hidden></div>
           <button id="first-app" class="primary" type="button">Set up your first app →</button>
         </div>
         <div id="messages"></div>
+        <section id="question-activity" class="question-activity" aria-label="Answer progress" hidden>
+          <div class="activity-heading"><span class="activity-glyph" aria-hidden="true"><i></i><i></i><i></i></span><strong id="activity-title">Understanding the ask</strong><span id="activity-elapsed" aria-label="Elapsed time">0s</span></div>
+          <p id="activity-page" hidden></p>
+          <ol id="activity-phases" class="activity-phases" aria-label="Answer stages">
+            <li data-phase="understand"><span class="phase-dot" aria-hidden="true"></span><span>Understand</span></li>
+            <li data-phase="find"><span class="phase-dot" aria-hidden="true"></span><span>Find data</span></li>
+            <li data-phase="work"><span class="phase-dot" aria-hidden="true"></span><span>Analyze</span></li>
+            <li data-phase="wrap"><span class="phase-dot" aria-hidden="true"></span><span>Answer</span></li>
+          </ol>
+          <p id="activity-status" role="status"></p>
+          <p id="activity-connection"></p>
+          <details id="activity-details"><summary id="activity-summary">Activity</summary><ol id="activity-log"></ol></details>
+        </section>
       </div>
       <form id="question-form" class="composer">
         <label class="sr-only" for="question">Ask a business question</label>
-        <textarea id="question" rows="3" maxlength="4000" placeholder="Ask about your business…" required></textarea>
-        <div class="composer-footer"><span id="question-status">Answers use your selected app.</span><button id="cancel-question" type="button" hidden>Stop</button><button id="send" class="primary" type="submit" disabled>Ask ↑</button></div>
+        <textarea id="question" rows="2" maxlength="4000" placeholder="What would you like to understand?" aria-describedby="composer-shortcuts" required></textarea>
+        <div class="composer-footer"><span id="composer-shortcuts">Enter to send · Alt+Enter for a new line</span><button id="send" class="primary" type="submit" data-action="send" aria-label="Send message" title="Send message (Enter)" disabled><svg class="send-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-7 7 7-7 7 7"/></svg><svg class="stop-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button></div>
       </form>
+      <p id="question-status" class="composer-status" role="status" hidden></p>
       <p id="chat-privacy" class="privacy-note">Chats are saved on this computer. Questions and relevant data are sent to your configured AI connection.</p>
     </section>
     <section id="admin-view" aria-label="Admin" hidden>

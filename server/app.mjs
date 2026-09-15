@@ -8,6 +8,8 @@ import { answerQuestion } from './chat.mjs';
 import { verifyAppDiscovery } from './apps.mjs';
 import { verifyPageContext } from './page-context.mjs';
 import { ConversationStore } from './conversations.mjs';
+import { createChatStream } from './chat-progress.mjs';
+import { savedPageContext } from './saved-page-context.mjs';
 
 export function createApp({ store, mcp, providers, port = 8766, conversations = new ConversationStore(join(dirname(store.file), 'conversations')) }) {
   let activeQuestion = false;
@@ -26,6 +28,7 @@ export function createApp({ store, mcp, providers, port = 8766, conversations = 
     if (!acceptRequest(req, res, store.data.token, port)) return;
     const send = (status, body) => sendJson(res, status, body);
     const controller = new AbortController();
+    let chatStream;
     res.on('close', () => { if (!res.writableEnded) controller.abort(); });
     try {
       const url = new URL(req.url, `http://127.0.0.1:${port}`);
@@ -82,13 +85,18 @@ export function createApp({ store, mcp, providers, port = 8766, conversations = 
       if (req.method === 'GET' && url.pathname === '/apps') return send(200, { apps: store.listApps(), legacyModelCount: store.list().length });
       if (req.method === 'POST' && url.pathname === '/page-context') {
         const input = await jsonBody(req), app = store.getApp(input.appKey), epoch = connectionEpoch;
-        const context = await verifyPageContext({ app, input, mcp, signal: controller.signal });
+        if (input.stream === true) chatStream = createChatStream(res);
+        const savedContext = input.savedConversationId ? savedPageContext(conversations, input, app) : undefined;
+        if (savedContext) { input.modelKey = savedContext.model.key; input.observation = {}; }
+        const context = await verifyPageContext({ app, input, mcp, savedContext, signal: controller.signal, onProgress: event => chatStream?.progress(event) });
+        if (savedContext && conversations.get(input.savedConversationId).revision !== input.savedConversationRevision) throw new AppError('This chat changed while restoring its page. Reopen it from History.', 409);
         if (epoch !== connectionEpoch || store.getApp(app.key).revision !== app.revision) throw new AppError('The app or connection changed. Refresh page context.', 409);
         const ticket = randomUUID(), expires = Date.now() + 5 * 60 * 1000;
         for (const [key, value] of pageContexts) if (value.expires < Date.now()) pageContexts.delete(key);
         if (pageContexts.size >= 30) pageContexts.delete(pageContexts.keys().next().value);
         pageContexts.set(ticket, { context, expires, appKey: app.key, revision: app.revision });
-        return send(200, { context, ticket, expires });
+        const result = { context, ticket, expires };
+        return chatStream ? chatStream.finish('result', { result }) : send(200, result);
       }
       if (req.method === 'POST' && url.pathname === '/app-discovery') {
         if (activeQuestion) throw new AppError('Wait for the current answer before discovering app models.', 409);
@@ -154,24 +162,30 @@ export function createApp({ store, mcp, providers, port = 8766, conversations = 
         const provider = providers.select(input);
         const scope = input.appKey ? store.getApp(input.appKey) : store.get(input.modelKey);
         const conversation = conversations.prepare({ input, scope, pageContext, llm: provider.settings });
-        // Saved history is authoritative and can only be continued within the
-        // same verified scope. Never import an archive into a different page.
+        // Saved history is authoritative. A context change requires an explicit
+        // continuation choice; all new reads still use the fresh page ticket.
         input.history = conversation.messages.slice(-8).map(({ role, text }) => ({ role, text }));
+        input.historyContextChanged = Boolean(conversation.pendingContextChange || conversation.messages.some(message => message.contextChange));
         activeQuestion = true;
         try {
-          const answer = await answerQuestion({ store, mcp, provider, input, pageContext, signal: controller.signal });
+          if (input.stream === true) chatStream = createChatStream(res);
+          const answer = await answerQuestion({ store, mcp, provider, input, pageContext, signal: controller.signal, onProgress: event => chatStream?.progress(event) });
           provider.check();
           if (controller.signal.aborted) throw new AppError('Question cancelled.', 499);
           let saved, historyError;
+          chatStream?.progress({ stage: 'saving', message: 'Saving this conversation' });
           try { saved = conversations.saveTurn(conversation, input.question.trim(), answer); }
           catch (error) { historyError = error.message; }
-          return send(200, { ...answer, conversation: saved, ...(historyError ? { historyError } : {}), llm: { provider: provider.settings.provider, model: provider.settings.model, revision: provider.settings.revision } });
+          const result = { ...answer, conversation: saved, ...(historyError ? { historyError } : {}), llm: { provider: provider.settings.provider, model: provider.settings.model, revision: provider.settings.revision } };
+          return chatStream ? chatStream.finish('result', { result }) : send(200, result);
         }
         finally { activeQuestion = false; }
       }
       return send(404, { error: 'Not found.' });
     } catch (error) {
-      return send(error.status ?? 500, { error: error.status ? error.message : 'The local helper encountered an error. Restart it and retry.', ...(error.details ?? {}) });
+      const status = error.status ?? 500;
+      const body = { error: error.status ? error.message : 'The local helper encountered an error. Restart it and retry.', ...(error.details ?? {}) };
+      return chatStream ? chatStream.finish('error', { status, ...body }) : send(status, body);
     }
   });
 }

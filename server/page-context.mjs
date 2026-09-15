@@ -3,30 +3,39 @@ import { AppError, requiredText } from './validation.mjs';
 import { metadataReader, metadataTable, viewDimensions } from './page-metadata.mjs';
 import { moduleSelections } from './module-evidence.mjs';
 import { resolveContextItem } from './page-selections.mjs';
+import { checkRestoredContext } from './saved-page-context.mjs';
 
 const bad = message => { throw new AppError(message, 422); };
 const array = (value, max) => Array.isArray(value) && value.length <= max ? value : bad('Page context has an invalid collection.');
 const id = value => /^\d{1,20}$/.test(String(value)) ? String(value) : bad('Page context has an invalid model object ID.');
 const fatal = error => [401, 403, 409, 499, 503].includes(error.status);
 
-export async function verifyPageContext({ app, input, mcp, signal }) {
+export async function verifyPageContext({ app, input, mcp, signal, onProgress = () => {}, savedContext }) {
   if (input.revision !== app.revision) throw new AppError('App context changed. Refresh page context.', 409);
   const definition = input.definition;
   if (!definition || !/^[a-f\d-]{36}$/i.test(definition.page?.id || '')) bad('Select a published page before asking.');
   const page = { id: definition.page.id, name: requiredText(definition.page.name, 'Page name', 2000), type: definition.page.type };
   const models = array(definition.models, 100).map(member => app.models.find(model => model.modelId.toUpperCase() === member.modelId && model.workspaceId.toUpperCase() === member.workspaceId)).filter(Boolean);
   const observation = input.observation || {};
-  const mode = input.mode === 'manual' ? 'manual' : 'follow';
+  const mode = savedContext ? 'saved' : input.mode === 'manual' ? 'manual' : 'follow';
   if (mode === 'follow' && observation.pageName && observation.pageName !== page.name) bad('The rendered page does not match its definition. Wait for the page to load.');
   const candidates = input.modelKey ? models.filter(model => model.key === input.modelKey) : observation.modelName && mode === 'follow' ? models.filter(model => model.name === observation.modelName) : definition.models.length === 1 ? models : [];
   if (candidates.length !== 1) bad('Choose the page’s source model. Its active model could not be identified uniquely.');
   const model = candidates[0];
-  const read = metadataReader(mcp, model, signal);
+  const metadata = metadataReader(mcp, model, signal);
+  let metadataReads = 0;
+  const read = (tool, args) => {
+    onProgress({ stage: 'verification', message: `Verifying page data · ${++metadataReads} metadata checks` });
+    return metadata(tool, args);
+  };
+  onProgress({ stage: 'verification', message: 'Checking the page’s model access' });
+  const hasViewLookup = typeof mcp.tools === 'function' && (await mcp.tools()).some(tool => tool.name === 'show_allviews');
   const modules = metadataTable(await read('show_modules', { limit: 1000 }));
   if (!modules.length || modules.some(module => !module.ID || !module.Name)) bad('The model’s module catalog is unavailable.');
   const options = array(definition.options || [], 100);
   const selections = array(observation.selections || [], 100);
   const selectionContext = { mode, rendered: observation.rendered === true, inheritedModelKey: observation.inheritedModelKey || '', options, selections };
+  if (savedContext) selectionContext.savedSources = savedContext.sources.map(source => ({ id: source.id, filters: source.filters.map(({ dimensionId, itemId }) => ({ dimensionId, itemId })), missing: source.savedMissing || source.missing }));
   const warnings = array(definition.warnings || [], 100).map(warning => requiredText(warning, 'Page warning', 2000));
   const sources = [];
   for (const source of array(definition.sources, 40)) {
@@ -42,6 +51,29 @@ export async function verifyPageContext({ app, input, mcp, signal }) {
       if (source.kind === 'CLASSIC') {
         const viewId = id(source.sourceId);
         module = modules.find(item => item.ID === viewId);
+        if (!module && hasViewLookup) {
+          let views;
+          try {
+            // Reuse a complete catalog across cards. Large catalogs use a
+            // bounded exact-ID search before any module-by-module fallback.
+            try { views = metadataTable(await read('show_allviews', { limit: 1000 })); }
+            catch (error) {
+              if (error.status !== 422) throw error;
+              views = metadataTable(await read('show_allviews', { search: viewId, limit: 1000 }));
+            }
+          }
+          catch (error) { if (![400, 404, 405, 501, 502].includes(error.status)) throw error; }
+          const matches = views?.filter(view => view.ID === viewId) || [];
+          if (matches.length > 1) bad('A saved view has ambiguous module membership.');
+          if (matches.length === 1) {
+            const candidates = modules.filter(candidate => candidate.Name === matches[0].Module);
+            if (candidates.length > 1) bad('A saved view has ambiguous module membership.');
+            if (candidates.length === 1) {
+              const owned = metadataTable(await read('show_savedviews', { moduleId: candidates[0].ID, limit: 1000 }));
+              if (owned.some(view => view.ID === viewId)) module = candidates[0];
+            }
+          }
+        }
         if (!module) {
           for (const candidate of modules) {
             const views = metadataTable(await read('show_savedviews', { moduleId: candidate.ID, limit: 1000 }));
@@ -96,7 +128,10 @@ export async function verifyPageContext({ app, input, mcp, signal }) {
         const pageSelections = selections.filter(item => item.dimensionId === dimension.id && item.cardId === '');
         const observed = cardSelections.length ? cardSelections : cardOption?.synced === false ? [] : pageSelections;
         let selection;
-        if (mode === 'follow' && observation.rendered && observed.length === 1 && !observed[0].scope && !observed[0].unresolved) selection = { label: observed[0].label, origin: cardSelections.length ? 'card selection' : 'page selection' };
+        if (mode === 'saved') {
+          const saved = savedContext.sources.find(item => item.id === sourceId)?.filters.filter(item => item.dimensionId === dimension.id) || [];
+          if (saved.length === 1) selection = { itemId: saved[0].itemId, origin: 'saved selection' };
+        } else if (mode === 'follow' && observation.rendered && observed.length === 1 && !observed[0].scope && !observed[0].unresolved) selection = { label: observed[0].label, origin: cardSelections.length ? 'card selection' : 'page selection' };
         else if (mode === 'manual') {
           const inherited = observation.inheritedModelKey === model.key ? selections.filter(item => item.dimensionId === dimension.id && !item.cardId && !item.scope && !item.unresolved) : [];
           if (cardOption?.synced !== false && inherited.length === 1) selection = { label: inherited[0].label, origin: 'inherited from tab' };
@@ -127,7 +162,9 @@ export async function verifyPageContext({ app, input, mcp, signal }) {
   }
   if (!sources.length || !sources.some(source => source.moduleIds.length)) bad('No page modules could be verified through MCP.');
   if (new Set(sources.map(source => source.id)).size !== sources.length) bad('Duplicate card sources.');
+  if (savedContext) checkRestoredContext(savedContext, { sources });
   const context = { page, mode, model: { key: model.key, name: model.name, workspaceName: model.workspaceName }, selectionContext, modelSelection: input.modelKey ? 'chosen for chat' : observation.modelName && mode === 'follow' ? 'observed on tab' : 'only page model', sources, warnings, definitionRevision: definition.definitionRevision || '', observedAt: new Date().toISOString() };
+  if (signal?.aborted) throw new AppError('Page verification cancelled.', 499);
   const { observedAt, ...identity } = context;
   context.fingerprint = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
   return context;
