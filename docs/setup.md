@@ -1,6 +1,6 @@
 # Setup guide
 
-Install and use **Xanaplan - Planning Assistant 0.9.3** on your own computer. The commands below use a macOS shell, matching the tested development environment.
+Install and use **Xanaplan - Planning Assistant 0.9.4** on your own computer. The commands below use a macOS shell, matching the tested development environment.
 
 ## What you will run
 
@@ -207,6 +207,7 @@ Xanaplan’s helper port is fixed at `8766`. `XANAPLAN_UI_PORT` changes only the
 | MCP unavailable | Build the MCP and confirm `XANAPLAN_MCP_DIR` points to the checkout containing both `dist/index.js` and its installed SDK. |
 | AI provider unavailable | Confirm the selected CLI runs and is signed in. Set its executable override if needed, restart the helper, then check AI access in Admin. |
 | Signed in to Anaplan, but model access fails | Complete MCP authorization as well as Chrome sign-in. Confirm the account can access every connected model. |
+| Assistant shows “Sign in to Anaplan” | Use **Open Anaplan**, sign in in the same Chrome profile, then select **Check connection**. Page controls stay hidden until the browser read succeeds. History and saved answers remain available; your draft is retained. |
 | Wrong app or page | In the page menu choose **Follow current tab**. Manual/saved choices stay pinned. Enable unmatched apps in Admin; ambiguous matches need a manual choice. |
 | A worksheet is marked unsupported | Reload the current extension. Version 0.9.3 recognizes Anaplan’s `GRID-PAGE` worksheet catalog type. Reports and edit/draft pages remain unavailable. |
 | Saved selections cannot be restored | Use **Continue on this page**, or verify access to the original page and members. Unknown saved selections are retained and may require clarification for a numeric read. |

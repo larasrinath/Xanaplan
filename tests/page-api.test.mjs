@@ -16,9 +16,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { pageFromUrl, pageCatalog, pageDefinition, readPageDefinition } from '../extension/page-api.mjs';
 import { observeTab, capturePageSelections } from '../extension/page-observer.mjs';
 import { createPageService } from '../extension/page-background.mjs';
+import { pageRequest } from '../extension/page-tracker.mjs';
 import { app, appId, pageId, catalog, board, observation, secondPageId } from './fixtures/page.mjs';
 
 test('page URLs require the enabled HTTPS origin and explicit published page routes', () => {
@@ -130,4 +133,19 @@ test('page observation passes through the background service using the real obse
   const response = await service({ action: 'observe' }, { id: 'x', url: chrome.runtime.getURL('panel.html') });
   assert.equal(response.ok, true); assert.equal(response.result.url, observation.url);
   assert.deepEqual(response.result.selections, observation.selections);
+});
+
+test('browser sign-in error codes reach the panel through the actual worker message handler', async () => {
+  let listener;
+  const chrome = {
+    runtime: { id: 'x', getURL: path => `chrome-extension://x/${path}`, onMessage: { addListener: value => { listener = value; } }, onInstalled: { addListener() {} } },
+    sidePanel: { setPanelBehavior: async () => {} },
+  };
+  const source = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
+  runInNewContext(source, { chrome, console,
+    createDiscoveryService: () => async () => { throw new Error('Unexpected discovery call'); },
+    createPageService: () => createPageService(chrome, { read: input => readPageDefinition(input, { fetchImpl: async () => new Response('', { status: 401 }) }) }),
+  });
+  chrome.runtime.sendMessage = message => new Promise(resolve => listener(message, { id: 'x', url: chrome.runtime.getURL('panel.html') }, resolve));
+  await assert.rejects(pageRequest('read', { ...app, pageId }, { chromeApi: chrome }), { code: 'ANAPLAN_BROWSER_LOGIN' });
 });

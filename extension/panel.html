@@ -65,6 +65,14 @@
         <p id="page-selections" hidden></p>
       </section>
       <div id="conversation" aria-live="polite" aria-relevant="additions">
+        <section id="browser-sign-in" class="browser-sign-in" aria-labelledby="browser-sign-in-title" hidden>
+          <div class="sign-in-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M4 12h11m-4-4 4 4-4 4"/></svg></div>
+          <h2 id="browser-sign-in-title">Sign in to Anaplan</h2>
+          <p>Sign in in this Chrome profile, then check your connection to continue.</p>
+          <div class="sign-in-actions"><a id="browser-sign-in-link" target="_blank" rel="noopener noreferrer">Open Anaplan ↗</a><button id="browser-sign-in-retry" class="primary" type="button">Check connection</button></div>
+          <p id="browser-sign-in-status" role="status" hidden></p>
+          <p class="sign-in-note">Your saved chats are still available in History.</p>
+        </section>
         <div id="welcome" class="welcome">
           <div class="eyebrow">A clearer view of your business</div>
           <h1 id="welcome-greeting">Hello.</h1>

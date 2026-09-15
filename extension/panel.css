@@ -157,6 +157,17 @@ h2 { font-size: 15px; font-weight: 650; letter-spacing: -.1px; }
 .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
 .welcome h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 35px; line-height: 1.1; letter-spacing: -1px; }
 .welcome p { color: var(--muted); font-size: 13px; margin: 14px 0 26px; max-width: 300px; }
+.browser-sign-in { max-width: 440px; margin: 36px auto; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; }
+.sign-in-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 20px; color: var(--accent); background: var(--accent-soft); border-radius: 13px; }
+.browser-sign-in h2 { font-size: 23px; letter-spacing: -.5px; line-height: 1.25; }
+.browser-sign-in p { margin-top: 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.sign-in-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; margin-top: 22px; }
+.sign-in-actions a { font-size: 12px; }
+.browser-sign-in .sign-in-note { margin-top: 24px; font-size: 11px; color: var(--faint); }
+.browser-sign-in #browser-sign-in-status { font-size: 12px; }
+.browser-sign-in[data-has-chat="true"] { max-width: 760px; margin: 12px auto 24px; padding: 18px; }
+.browser-sign-in[data-has-chat="true"] .sign-in-icon { display: none; }
+.browser-sign-in[data-has-chat="true"] h2 { font-size: 18px; }
 .suggestions { display: grid; gap: 8px; margin-bottom: 22px; }
 .suggestions button {
   display: flex; text-align: left; align-items: center; justify-content: space-between; gap: 12px;

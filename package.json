@@ -1,6 +1,6 @@
 {
   "name": "xanaplan",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Ask business questions alongside Anaplan, with local app context and read-only model access.",
   "author": "Lara Srinath",
   "repository": {

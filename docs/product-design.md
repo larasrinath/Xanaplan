@@ -1,6 +1,6 @@
 # Xanaplan - Planning Assistant
 
-Current product behavior for version **0.9.3**. Start with the [setup guide](setup.md) for installation and sign-in.
+Current product behavior for version **0.9.4**. Start with the [setup guide](setup.md) for installation and sign-in.
 
 One person wears both hats. The Chrome side panel contains **Assistant** and **Admin** and stays beside Anaplan. There is no shared administration service in this version.
 
@@ -43,6 +43,8 @@ Context includes purpose, KPIs, definitions, currency/units, calendar, versions,
 Each business-context save increments a revision. Stale saves are rejected. New questions use the saved app and AI revisions, and server-side changes to those settings or access invalidate incompatible requests. Browser page/selection changes do not cancel a running answer: it retains its verified snapshot. Completed chats are saved locally and remain available after the panel or helper restarts. An explicit continuation choice can move a saved conversation to freshly verified context while retaining earlier source snapshots.
 
 ## Assistant
+
+A browser sign-in failure replaces the page picker, welcome prompts and idle composer with one recovery card: **Sign in to Anaplan**, **Open Anaplan** and **Check connection**. The link opens the validated Anaplan site only when clicked. Recovery remains visible through retries and temporary network failures until a fresh browser read succeeds. Cached page definitions are discarded, and continuation notices clear when their verified context becomes unavailable. Existing answers, unsent drafts and History are retained; a running answer and its Stop button remain available. Browser sign-in and MCP authorization remain separate.
 
 The header contains the supplied logo, New chat, and a right-hand hamburger menu for Assistant, History and Admin settings. A single compact row shows the current page and Live, Chosen or Saved mode. Its popover contains Follow current tab, Refresh and app/page/model choices. It overlays the conversation, closes after selection, outside click or Escape, and omits a generic “App & page” heading. A muted line shows confirmed shared selections. Technical mappings and unresolved-selector diagnostics stay internal until they affect a question.
 

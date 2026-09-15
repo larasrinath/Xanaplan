@@ -32,7 +32,7 @@ export async function pageRequest(action, input, { signal, chromeApi = globalThi
     if (signal?.aborted) throw new DOMException('Page read cancelled', 'AbortError');
     const response = await Promise.race([chromeApi.runtime.sendMessage({ target: 'page-background', action, jobId, input }), stopped]);
     if (signal?.aborted) throw new DOMException('Page read cancelled', 'AbortError');
-    if (!response?.ok) throw new Error(response?.error || 'Page context is unavailable. Reload the extension and refresh.');
+    if (!response?.ok) throw Object.assign(new Error(response?.error || 'Page context is unavailable. Reload the extension and refresh.'), { code: response?.code });
     return response.result;
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
@@ -42,14 +42,21 @@ export async function pageRequest(action, input, { signal, chromeApi = globalThi
 export class PageTracker {
   constructor({ read = pageRequest, api, changed = () => {}, resolveApp = () => null }) {
     this.read = read; this.api = api; this.changed = changed; this.resolveApp = resolveApp;
-    this.state = { mode: 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '' };
+    this.state = { mode: 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired: false };
     this.sequence = 0; this.observation = null; this.app = null; this.observing = false;
   }
   invalidate() {
     const restoring = this.restoring; this.restoring = null; restoring?.tracker.invalidate();
     ++this.sequence; this.controller?.abort();
-    Object.assign(this.state, { context: null, ticket: '', expires: 0, loading: false, error: '', progress: '', startedAt: 0 });
+    Object.assign(this.state, { context: null, ticket: '', expires: 0, loading: false, error: '', errorCode: '', progress: '', startedAt: 0 });
     this.changed(this.state);
+  }
+  setError(error) {
+    this.state.error = error.message; this.state.errorCode = error.code || '';
+    if (error.code === 'ANAPLAN_BROWSER_LOGIN') {
+      Object.assign(this.state, { browserSignInRequired: true, pages: [], context: null, ticket: '', expires: 0 });
+      this.definition = null; this.definitionCache = null;
+    }
   }
   matchingApp(observation) {
     const page = pageFromUrl(observation?.url), app = page && this.resolveApp(page);
@@ -57,7 +64,8 @@ export class PageTracker {
   }
   async setApp(app, { manual = false, observation } = {}) {
     if (!manual && this.app?.key === app?.key && this.app?.revision === app?.revision) return;
-    this.app = app; this.state = { mode: manual ? 'manual' : 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '' };
+    const browserSignInRequired = this.state.browserSignInRequired && Boolean(app) && this.app?.origin === app.origin;
+    this.app = app; this.state = { mode: manual ? 'manual' : 'follow', pages: [], selectedPage: '', modelKey: '', context: null, ticket: '', loading: false, error: '', errorCode: '', browserSignInRequired };
     if (observation) this.observation = observation;
     this.definition = null; this.definitionCache = null; this.saved = null; this.inherited = null; this.invalidate();
     if (app) await this.refresh({ observe: !observation });
@@ -94,11 +102,14 @@ export class PageTracker {
     try {
       await candidate.refresh({ observe: false });
       if (seq !== this.sequence || this.restoring?.tracker !== candidate) throw new DOMException('Saved page restoration stopped', 'AbortError');
-      if (!candidate.state.ticket) throw new Error(candidate.state.error || 'Saved page restoration was stopped.');
+      if (!candidate.state.ticket) throw Object.assign(new Error(candidate.state.error || 'Saved page restoration was stopped.'), { code: candidate.state.errorCode });
       this.app = app; this.state = candidate.state; this.saved = candidate.saved;
       this.definition = candidate.definition; this.definitionCache = candidate.definitionCache; this.inherited = null;
     } catch (error) {
-      if (seq === this.sequence) this.state = previous;
+      if (seq === this.sequence) {
+        this.state = previous;
+        if (error.code === 'ANAPLAN_BROWSER_LOGIN') this.setError(error);
+      }
       throw error;
     } finally {
       if (seq === this.sequence) { this.restoring = null; this.changed(this.state); }
@@ -131,7 +142,7 @@ export class PageTracker {
       this.observation = observation;
       if (changed && this.state.mode === 'follow') { if (modelChanged) this.state.modelKey = ''; await this.refresh({ observe: false, useDefinitionCache: true }); }
     } catch (error) {
-      if (app === this.app && !this.restoring && this.state.mode === 'follow') { this.invalidate(); this.state.error = error.message; this.changed(this.state); }
+      if (app === this.app && sequence === this.sequence && !this.restoring && this.state.mode === 'follow') { this.invalidate(); this.setError(error); this.changed(this.state); }
     } finally { this.observing = false; }
   }
   async refresh({ observe = true, useDefinitionCache = false } = {}) {
@@ -145,13 +156,13 @@ export class PageTracker {
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; requestController.abort(); }, 90000);
     try {
-      let observationError = '';
+      let observationError;
       if (observe && this.state.mode === 'follow') {
         let observation;
         try { observation = await this.read('observe', undefined, { signal }); }
         catch (error) {
           if (error.name === 'AbortError') throw error;
-          observationError = error.message; observation = null;
+          observationError = error; observation = null;
         }
         if (seq !== this.sequence) return;
         this.observation = observation;
@@ -165,8 +176,11 @@ export class PageTracker {
       const definition = cached ? this.definitionCache.definition : await this.read('read', { origin: app.origin, tenantId: app.tenantId, appId: app.appId, ...(pageId ? { pageId } : {}) }, { signal });
       if (seq !== this.sequence) return;
       this.state.pages = definition.pages; this.definition = definition;
+      // A successful browser read confirms sign-in. Keep recovery visible during
+      // retries, including transient failures, until this request succeeds.
+      this.state.browserSignInRequired = false;
       if (definition.unavailableReason) throw new Error(definition.unavailableReason);
-      if (!pageId) throw new Error(observationError || (this.state.mode === 'manual' ? 'Choose a page for this chat.' : tab?.editing ? 'Leave page edit mode or choose a published page.' : tab && tab.appId !== app.appId ? 'This tab’s app is not enabled or could not be matched. Enable it in Admin, or choose another page.' : 'Open an Anaplan page, or choose one from the page menu.'));
+      if (!pageId) throw observationError || new Error(this.state.mode === 'manual' ? 'Choose a page for this chat.' : tab?.editing ? 'Leave page edit mode or choose a published page.' : tab && tab.appId !== app.appId ? 'This tab’s app is not enabled or could not be matched. Enable it in Admin, or choose another page.' : 'Open an Anaplan page, or choose one from the page menu.');
       if (this.state.mode === 'follow') this.state.selectedPage = pageId;
       if (!cached) this.definitionCache = { pageId, definition, expires: Date.now() + 60000 };
       progress('Verifying the page’s model and selections');
@@ -179,7 +193,7 @@ export class PageTracker {
       if (seq !== this.sequence) return;
       Object.assign(this.state, result);
     } catch (error) {
-      if (seq === this.sequence && (timedOut || error.name !== 'AbortError')) this.state.error = timedOut ? 'Page verification timed out. Refresh to try again.' : error.message;
+      if (seq === this.sequence && (timedOut || error.name !== 'AbortError')) this.setError(timedOut ? new Error('Page verification timed out. Refresh to try again.') : error);
     } finally {
       clearTimeout(timeout);
       if (seq === this.sequence) { this.state.loading = false; this.changed(this.state); }
@@ -189,7 +203,7 @@ export class PageTracker {
     // Re-observe immediately before every question; polling is only a UI aid.
     await this.observe();
     if (!this.state.ticket || this.state.expires <= Date.now() + 10000) await this.refresh();
-    if (!this.state.ticket || this.state.loading) throw new Error(this.state.error || 'Wait for page context to finish loading.');
+    if (!this.state.ticket || this.state.loading) throw Object.assign(new Error(this.state.error || 'Wait for page context to finish loading.'), { code: this.state.errorCode });
     return structuredClone({ ticket: this.state.ticket, context: this.state.context });
   }
 }

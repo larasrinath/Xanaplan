@@ -68,7 +68,7 @@ const runtime = {id:'synthetic-extension', getURL:path=>'chrome-extension://synt
 const sender = {id:runtime.id,url:runtime.getURL('panel.html')};
 const discoveryService = createDiscoveryService({runtime},{read:(input,options)=>readAnaplanDiscovery(input,{...options,fetchImpl:fixtureFetch})});
 const pageService = createPageService({runtime},{read:(input,options)=>readPageDefinition(input,{...options,fetchImpl:fixtureFetch}),observe:async()=>{const response=await fetch('/test/page');return response.json();}});
-const syntheticChrome = {runtime:{sendMessage:async message=>{try{return await (message.target==='page-background'?pageService:discoveryService)(message,sender);}catch(error){return {ok:false,error:error.message};}}}};
+const syntheticChrome = {runtime:{sendMessage:async message=>{try{return await (message.target==='page-background'?pageService:discoveryService)(message,sender);}catch(error){return {ok:false,error:error.message,code:error.code};}}}};
 `;
 const assets = new Set(['panel.html', 'panel.js', 'panel.css', 'local-api.mjs', 'chat-stream.mjs', 'question-progress.mjs', 'answer-markdown.mjs', 'conversation-view.mjs', 'chat-history.mjs', 'searchable-select.mjs', 'anaplan-auth.mjs', 'discovery-input.mjs', 'discovery-cache.mjs', 'discovery-api.mjs', 'discovery-background.mjs', 'page-api.mjs', 'page-observer.mjs', 'page-background.mjs', 'page-panel.mjs']);
 assets.add('welcome.mjs'); assets.add('assets/xanaplan-logo.png');
@@ -102,6 +102,7 @@ const server = createServer(async (req, res) => {
       return send(res, 200, snapshot);
     }
     if (url.pathname === '/test/anaplan') {
+      if (discoveryMode === 'login') return send(res, 401, {});
       if (discoveryMode === 'unavailable') return send(res, 503, {});
       const root = '/a/springboard-definition-service';
       const bodies = {
@@ -117,7 +118,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/') {
       const width = [320, 400, 960].includes(Number(url.searchParams.get('width'))) ? Number(url.searchParams.get('width')) : 400;
       res.setHeader('Content-Type', 'text/html');
-      return res.end(`<!doctype html><html><head><title>Xanaplan synthetic test</title></head><body style="background:#e7eeea;font:14px system-ui"><p style="text-align:center">Synthetic test only · isolated settings · no Anaplan or AI calls</p><div style="display:flex;gap:12px;justify-content:center;margin:12px"><label>Access <select data-fixture="auth"><option>connected</option><option>login</option><option>error</option></select></label><label>Discovery <select data-fixture="discovery"><option>available</option><option>unavailable</option></select></label><label>Tab context <select data-fixture="page"><option>current</option><option>february</option><option>unknown</option><option>outside</option></select></label></div><iframe title="Extension panel under test" src="/panel.html" style="display:block;width:${width}px;max-width:100%;height:calc(100vh - 110px);border:1px solid #bbcabc;margin:auto;background:white"></iframe><script>document.querySelectorAll('[data-fixture]').forEach(select=>select.addEventListener('change',()=>fetch('/test/'+select.dataset.fixture,{method:'POST',body:new URLSearchParams({mode:select.value})})));</script></body></html>`);
+      return res.end(`<!doctype html><html><head><title>Xanaplan synthetic test</title></head><body style="background:#e7eeea;font:14px system-ui"><p style="text-align:center">Synthetic test only · isolated settings · no Anaplan or AI calls</p><div style="display:flex;gap:12px;justify-content:center;margin:12px"><label>Access <select data-fixture="auth"><option>connected</option><option>login</option><option>error</option></select></label><label>Discovery <select data-fixture="discovery"><option>available</option><option>login</option><option>unavailable</option></select></label><label>Tab context <select data-fixture="page"><option>current</option><option>february</option><option>unknown</option><option>outside</option></select></label></div><iframe title="Extension panel under test" src="/panel.html" style="display:block;width:${width}px;max-width:100%;height:calc(100vh - 110px);border:1px solid #bbcabc;margin:auto;background:white"></iframe><script>document.querySelectorAll('[data-fixture]').forEach(select=>select.addEventListener('change',()=>fetch('/test/'+select.dataset.fixture,{method:'POST',body:new URLSearchParams({mode:select.value})})));</script></body></html>`);
     }
     if (url.pathname === '/local-config.js') { res.setHeader('Content-Type', 'text/javascript'); return res.end(`export const connection={baseUrl:'http://127.0.0.1:${port}/api',token:'synthetic-test-only'};`); }
     if (['/app-discovery.mjs', '/page-tracker.mjs'].includes(url.pathname)) {

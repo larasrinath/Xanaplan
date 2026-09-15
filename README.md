@@ -2,7 +2,7 @@
 
 Ask planning questions alongside Anaplan, using the current page, selections and your business definitions. Xanaplan runs as a local Chrome side-panel extension with read-only access to enabled Anaplan models.
 
-**Version 0.9.3** · [Setup guide](docs/setup.md) · [Changelog](CHANGELOG.md) · [Apache 2.0 license](LICENSE)
+**Version 0.9.4** · [Setup guide](docs/setup.md) · [Changelog](CHANGELOG.md) · [Apache 2.0 license](LICENSE)
 
 ## What it does
 
@@ -44,6 +44,8 @@ The compact row below the header shows the page and its mode: **Live**, **Chosen
 Following the tab matches its origin and app ID to exactly one enabled app. Manual app/page choices and saved contexts remain pinned until you resume following. Unmatched apps require enablement or a manual selection. None of these controls navigates Anaplan or changes its selectors.
 
 A question uses a frozen, verified page/model/selection snapshot. Navigation changes the available context for the next question; it does not cancel a running answer or relabel its sources. Explicit Stop and closing the panel still cancel the request.
+
+When Chrome needs Anaplan sign-in, the Assistant shows a single recovery card with **Open Anaplan** and **Check connection**. Page controls, starter prompts and the idle composer return after a successful check. Saved answers and History remain readable, unsent drafts are retained, and a running answer keeps its Stop control.
 
 ### Ask and continue
 

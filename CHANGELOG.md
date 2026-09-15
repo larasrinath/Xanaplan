@@ -2,6 +2,14 @@
 
 Record user-visible changes here; the README describes current setup and behavior.
 
+## 0.9.4
+
+- Show a dedicated Anaplan browser sign-in card with Open Anaplan and Check connection. Hide page controls, welcome prompts and the idle composer while browser sign-in is required.
+- Preserve saved answers, History, unsent drafts and the Stop control for an active answer. Remove continuation notices when their verified page context becomes unavailable.
+- Preserve browser authentication error codes through the service worker. Discard expired page definitions and tickets, keep recovery visible through failed retries, and restore page controls after a fresh browser read succeeds.
+- Cover initial sign-out, session expiry, retry failures, recovery, saved-chat access and ongoing answers in automated tests. Add a browser-login fixture to the UI harness.
+- Reload the extension and reopen its side panel. This update adds no permissions and does not require restarting a helper already on 0.9.3.
+
 ## 0.9.3
 
 - Add a complete setup guide covering local installation, AI sign-in, Chrome’s Anaplan sign-in, MCP authorization, the page menu, updates, troubleshooting and backups. Refresh the README, product behavior, history and live acceptance docs.

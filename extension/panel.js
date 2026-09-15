@@ -31,6 +31,7 @@ const questionProgress = createQuestionProgress(document);
 let apps = [], selectedKey = '', editing = null, busy = false, controller = null, loadSequence = 0;
 let questionCancelled = false;
 let activeTurn = null;
+let lastLiveThread = null;
 let historyAction = '';
 let connectionStatus = null;
 let anaplanSettings = null, anaplanDirty = false, connectionSaving = false;
@@ -122,8 +123,9 @@ function renderConnectedModels(connected) {
   renderAppSave();
 }
 
-function notice(message, error = false) {
+function notice(message, error = false, contextual = false) {
   $('notice').textContent = message; $('notice').dataset.error = String(error); $('notice').hidden = !message;
+  $('notice').dataset.contextual = String(contextual);
 }
 function showError(error) {
   if (error.name === 'AbortError') return;
@@ -139,7 +141,7 @@ function showError(error) {
     $('auth-progress').textContent = url ? 'After signing in, select Check connection.' : 'No sign-in link received. Check connection to retry.';
     notice(''); renderAnaplan();
     $('anaplan-connection').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('anaplan-connection').focus({ preventScroll: true });
-  } else if (error.message === pageContext.state.error && !$('live-context').hidden) notice('');
+  } else if (error.message === pageContext.state.error && (!$('live-context').hidden || pageContext.state.browserSignInRequired)) notice('');
   else notice(error.message, true);
 }
 function on(id, event, handler) {
@@ -170,12 +172,12 @@ function updateComposer() {
   $('send').dataset.action = busy ? 'stop' : 'send';
   $('send').setAttribute('aria-label', busy ? questionCancelled ? 'Stopping answer' : 'Stop answer' : 'Send message');
   $('send').title = busy ? questionCancelled ? 'Stopping answer…' : 'Stop answer' : 'Send message (Enter)';
-  $('question').disabled = busy || savingApp || !currentApp();
+  $('question').disabled = busy || savingApp || !currentApp() || pageContext.state.browserSignInRequired;
   $('chat-app').disabled = busy || savingApp;
   $('question-status').textContent = savingApp ? 'Saving app…' : busy || !currentApp() ? '' : !connectionStatus?.provider?.loggedIn ? 'Connect the AI provider in Admin to ask questions.' : llmBusy ? 'Checking AI settings…' : '';
   if (!busy && (thread?.loadError || !chatHistory.ready)) $('question-status').textContent = thread?.loadError || chatHistory.error || 'Loading saved chats…';
   if (!busy && thread?.saveError) $('question-status').textContent = 'This answer was not saved. Keep it open to copy it, then start a new chat.';
-  $('question-status').hidden = !$('question-status').textContent || chatHistory.listOpen || Boolean(chatHistory.viewed);
+  $('question-status').hidden = !$('question-status').textContent || chatHistory.listOpen || Boolean(chatHistory.viewed) || pageContext.state.browserSignInRequired;
 }
 function renderConnectionDot(id, state, description) {
   const dot = $(id);
@@ -212,13 +214,18 @@ function applyLlm(settings, force = false) {
   renderLlm(); renderMessages();
 }
 function renderMessages() {
-  renderConversation(document, { messages: activeTurn?.thread.messages || chatHistory.viewed?.messages || currentThread()?.messages || [], hasApps: apps.length > 0 });
+  const needsSignIn = pageContext.state.browserSignInRequired, thread = currentThread();
+  if (lastLiveThread && ![...chatHistory.threads.values()].includes(lastLiveThread)) lastLiveThread = null;
+  if (thread && !chatHistory.viewed && !chatHistory.listOpen) lastLiveThread = thread;
+  const messages = activeTurn?.thread.messages || chatHistory.viewed?.messages || thread?.messages || (needsSignIn ? lastLiveThread?.messages : null) || [];
+  renderConversation(document, { messages, hasApps: apps.length > 0 });
+  if (!pageContext.state.ticket && $('notice').dataset.contextual === 'true') notice('');
   $('activity-page').hidden = !activeTurn || activeTurn.scopeKey === currentScopeKey();
   $('activity-page').textContent = activeTurn ? `Answering for ${activeTurn.snapshot.context.page.name}` : '';
   renderWelcome(document, { ...pageContext.state, hasApps: apps.length > 0, busy: busy || savingApp || Boolean(historyAction) });
-  renderChatHistory(document, chatHistory, { scopeKey: currentScopeKey(), activeThread: activeTurn?.thread, busy: busy || Boolean(historyAction),
+  renderChatHistory(document, chatHistory, { scopeKey: currentScopeKey(), activeThread: activeTurn?.thread || (needsSignIn ? lastLiveThread : null), busy: busy || Boolean(historyAction),
     currentPage: pageContext.state.context?.page.name,
-    canRestoreSaved: Boolean(chatHistory.viewed?.page && !chatHistory.viewed.saveError && apps.some(app => app.key === chatHistory.viewed.app.key)),
+    canRestoreSaved: Boolean(!needsSignIn && chatHistory.viewed?.page && !chatHistory.viewed.saveError && apps.some(app => app.key === chatHistory.viewed.app.key)),
     restoring: historyAction ? pageContext.state.progress || 'Checking the page…' : '',
     open: id => chatHistory.open(id, currentScopeKey),
     remove: async record => {
@@ -226,6 +233,22 @@ function renderMessages() {
       try { await chatHistory.remove(record.id, record.revision); } catch (error) { showError(error); }
     },
   });
+  $('browser-sign-in').hidden = !needsSignIn || chatHistory.listOpen;
+  $('browser-sign-in').dataset.hasChat = String(messages.length > 0 || busy);
+  if (needsSignIn) {
+    $('live-context').hidden = true; $('context-controls').open = false;
+    $('welcome').hidden = true;
+    $('question-form').hidden ||= !busy;
+    $('chat-privacy').hidden = true;
+    let origin;
+    try { origin = appOrigin(pageContext.app?.origin); } catch {}
+    $('browser-sign-in-link').hidden = !origin;
+    if (origin) $('browser-sign-in-link').href = origin; else $('browser-sign-in-link').removeAttribute('href');
+    $('browser-sign-in-retry').disabled = pageContext.state.loading;
+    $('browser-sign-in-retry').textContent = pageContext.state.loading ? 'Checking…' : 'Check connection';
+    $('browser-sign-in-status').textContent = pageContext.state.loading ? 'Checking your Anaplan connection…' : pageContext.state.errorCode === 'ANAPLAN_BROWSER_LOGIN' ? '' : pageContext.state.error;
+    $('browser-sign-in-status').hidden = !$('browser-sign-in-status').textContent;
+  }
   updateComposer();
 }
 function renderApps() {
@@ -471,7 +494,7 @@ on('history-continue', 'click', async () => {
     await pageContext.snapshot();
     if (chatHistory.sequence !== sequence || chatHistory.viewed?.id !== archived.id) return;
     chatHistory.continueHere(currentScopeKey());
-    notice(`Continuing on ${pageContext.state.context.page.name}. Earlier answers retain their original context.`);
+    notice(`Continuing on ${pageContext.state.context.page.name}. Earlier answers retain their original context.`, false, true);
     $('question').focus();
   } catch (error) { if (chatHistory.sequence === sequence) throw error; }
   finally { historyAction = ''; button.textContent = 'Continue on this page'; renderMessages(); }
@@ -486,7 +509,7 @@ on('history-use-saved', 'click', async () => {
     if (chatHistory.sequence !== sequence || chatHistory.viewed?.id !== archived.id || pageContext.saved?.id !== archived.id) return;
     selectedKey = app.key; renderApps();
     chatHistory.continueHere(currentScopeKey());
-    notice(`Continuing on ${pageContext.state.context.page.name} with its saved selections.`);
+    notice(`Continuing on ${pageContext.state.context.page.name} with its saved selections.`, false, true);
     $('question').focus();
   } catch (error) { if (chatHistory.sequence === sequence) throw error; }
   finally { historyAction = ''; button.textContent = 'Use saved page & selections'; renderMessages(); }
@@ -499,6 +522,12 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && $('navigation-menu').open) { $('navigation-menu').open = false; $('navigation-toggle').focus(); }
 });
 on('first-app', 'click', async () => { view('admin'); await addApp(); });
+on('browser-sign-in-retry', 'click', async () => {
+  if (pageContext.state.loading) return;
+  await pageContext.refresh();
+  if (pageContext.state.browserSignInRequired) $('browser-sign-in-retry').focus();
+  else if (!$('question-form').hidden && !$('question').disabled) $('question').focus();
+});
 on('add-app', 'click', addApp);
 on('close-editor', 'click', () => { appPicker.close(); cancelDiscovery(); $('app-editor').hidden = true; editing = null; });
 on('tenant', 'change', () => {

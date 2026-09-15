@@ -1,4 +1,4 @@
-# Page-aware Assistant · 0.9.3
+# Page-aware Assistant · 0.9.4
 
 See the [setup guide](setup.md) to install or update the extension. Implemented locally; live Anaplan acceptance remains a separate check. Synthetic fixtures are illustrative contracts, not captured customer data.
 
@@ -21,6 +21,8 @@ The compact context row shows the page name and current mode. Its popover contai
 The Anaplan client’s catalog enum is `GRID-PAGE`, mapped to `/worksheets/` in browser URLs and `/grid-pages/` for published definitions. The adapter previously recognized `GRID` but omitted this actual catalog value, incorrectly disabling worksheets. The catalog fixture and GET-route regression now use `GRID-PAGE`, matching the captured Table of Contents and Springboard clients cited below. Reports and unknown types remain distinct.
 
 ## Behavior
+
+Browser sign-in errors carry a structured `ANAPLAN_BROWSER_LOGIN` code from the background request to the panel. They clear cached pages/definitions and the verification ticket, and show a dedicated recovery card in place of live page controls and starter prompts. Retries keep the card visible until a fresh browser read succeeds. Ordinary unsupported-page errors still leave the picker available. Failed saved-page restores retain the prior context except when browser sign-in is no longer valid; in that case old access is invalidated and the saved chat remains readable.
 
 1. Enable an app in Admin, then select it in Assistant.
 2. Follow the active tab's published board/worksheet automatically, matching its origin and app ID to exactly one enabled app at startup and on navigation. Unmatched or ambiguous apps require choosing a context or enabling the app in Admin. Explicit manual app/page choices and saved contexts remain pinned until **Follow current tab** is selected again.
@@ -62,7 +64,7 @@ These internal web contracts can change. Live account response shapes and all se
 
 ## Local validation
 
-Latest local result: **153 tests passed** for 0.9.3, including automatic app matching, answer completion across navigation, Stop, and saved-context continuation. The custom-card tests cover verified module reads, independent and inherited selectors, off-axis Country conditions, explicit overrides, formula dependencies, access limits, omitted query metadata and partial results. A scripted provider exercises the production request listeners from app discovery through a count sourced from module data, excluding placeholders, other countries, duplicate stores and summary rows. This validates the tool/evidence path, not a live model's reasoning accuracy or the customer's store count. The running synthetic harness previously completed app enablement → page verification → a February query override → a sourced answer over loopback HTTP. Native visual testing was attempted but remained blocked by pending Accessibility/Screen Recording permissions; the automated suite makes no live Anaplan or AI calls.
+Latest local result: **157 tests passed** for 0.9.4, including browser sign-in recovery, preserved drafts/history, automatic app matching, answer completion across navigation, Stop, and saved-context continuation. The custom-card tests cover verified module reads, independent and inherited selectors, off-axis Country conditions, explicit overrides, formula dependencies, access limits, omitted query metadata and partial results. A scripted provider exercises the production request listeners from app discovery through a count sourced from module data, excluding placeholders, other countries, duplicate stores and summary rows. This validates the tool/evidence path, not a live model's reasoning accuracy or the customer's store count. The running synthetic harness previously completed app enablement → page verification → a February query override → a sourced answer over loopback HTTP. Native visual testing was attempted but remained blocked by pending Accessibility/Screen Recording permissions; the automated suite makes no live Anaplan or AI calls.
 
 A separate OpenAI-provider check on 2026-09-13 used only synthetic store metadata/data through the actual `answerQuestion` loop and Codex provider. The provider investigated module metadata, invoked `read_module_cells` and returned the expected two distinct existing Medium stores in Canada/Actual, explicitly excluding the duplicate, placeholder, USA store and summary row. This is a model-behavior check on a fixture, not the live customer's count.
 
@@ -80,7 +82,7 @@ Version 0.8.1 additionally passed a headless Chrome visual check of the producti
 
 ## Live acceptance checklist
 
-Restart the helper and reload the unpacked extension so 0.9.3 is active. Use a read-only test app with known totals.
+Load matching helper/extension files and reload the unpacked extension so 0.9.4 is active. The 0.9.3 → 0.9.4 change is confined to the extension and requires no helper restart. Use a read-only test app with known totals.
 
 1. Confirm tenant/app enablement and available page names; check the actual catalog and board/worksheet response contracts without retaining credentials or customer values in Git.
 2. Open a saved-view board. Compare detected page, source model, module/view ownership, period/version/entity and independent card selections with Anaplan.
@@ -89,7 +91,7 @@ Restart the helper and reload the unpacked extension so 0.9.3 is active. Use a r
 5. Ask for a known KPI, then name another period/version in the query. Check cell values and source filters against Anaplan, and confirm browser selectors are unchanged.
 6. Ask a driver question whose formula references another module and a SUM/LOOKUP mapping. Check the cited path and compatible dimensions; unrelated modules must remain inaccessible.
 7. Ask the Existing Stores / Medium question on the custom card. Confirm metadata and module data are investigated, Canada and the existing-store rule are preserved, and the count matches a known complete result. Exercise duplicate display names, hidden/independent selectors, alternative models and runtime filters. Unresolved conditions must be explained specifically rather than refusing merely because the card is custom.
-8. Test expired browser/MCP sign-in, unavailable helper, missing page access and large catalogs. Record actionable recovery and latency.
+8. Test expired browser/MCP sign-in, unavailable helper, missing page access and large catalogs. Browser sign-in should show one recovery card with no page picker, starter prompts, idle composer or stale continuation notice. Verify failed retry, successful retry, draft retention, access to History and Stop during a running answer. Record actionable recovery and latency.
 9. Inspect panel widths around 320–400 px: the compact page popover, outside-click/Escape dismissal, keyboard selection, focus, long names, the logo theme, loading states, sources and the send/Stop toggle. Native visual acceptance remains outstanding until browser control is available.
 
 Record observed schema differences, unsupported card types and first-answer latency before deciding the next implementation slice in the [discussion plan](assistant-flow-review.md).

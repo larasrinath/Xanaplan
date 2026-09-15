@@ -155,6 +155,54 @@ test('a failed tab observer still loads the dropdown for manual page context', a
   await f.tracker.choose(secondPageId);
   assert.equal(f.tracker.state.context.page.id, secondPageId);
 });
+
+test('browser sign-in loss discards cached pages and recovers only after a fresh browser read', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  const read = f.tracker.read;
+  let failure = Object.assign(new Error('Browser authorization required'), { code: 'ANAPLAN_BROWSER_LOGIN' });
+  f.tracker.read = async (...args) => {
+    if (args[0] === 'read' && failure) throw failure;
+    return read(...args);
+  };
+  await f.tracker.refresh();
+  assert.equal(f.tracker.state.browserSignInRequired, true);
+  assert.equal(f.tracker.state.errorCode, 'ANAPLAN_BROWSER_LOGIN');
+  assert.deepEqual(f.tracker.state.pages, []); assert.equal(f.tracker.state.ticket, '');
+  assert.equal(f.tracker.definitionCache, null); assert.equal(f.tracker.definition, null);
+  failure = new Error('Temporary network error');
+  await f.tracker.setApp({ ...app, revision: app.revision + 1 });
+  assert.equal(f.tracker.state.browserSignInRequired, true, 'A retry failure must not show page controls again');
+  failure = null;
+  await f.tracker.refresh({ useDefinitionCache: true });
+  assert.equal(f.tracker.state.browserSignInRequired, false);
+  assert.equal(f.tracker.state.errorCode, ''); assert.ok(f.tracker.state.ticket);
+  assert.equal(f.requests.length, 2, 'Recovery must fetch a new definition');
+});
+
+test('a stale observer failure cannot invalidate a later successful refresh', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  const pending = Promise.withResolvers(), read = f.tracker.read;
+  f.tracker.read = (...args) => args[0] === 'observe' ? pending.promise : read(...args);
+  const old = f.tracker.observe();
+  await f.tracker.refresh({ observe: false });
+  pending.reject(Object.assign(new Error('Old authorization failure'), { code: 'ANAPLAN_BROWSER_LOGIN' }));
+  await old;
+  assert.equal(f.tracker.state.context.page.id, pageId);
+  assert.equal(f.tracker.state.browserSignInRequired, false);
+});
+
+test('browser sign-in failure while restoring a saved chat invalidates expired access', async () => {
+  const f = fixture(); await f.tracker.setApp(app);
+  const read = f.tracker.read;
+  f.tracker.read = (...args) => {
+    if (args[0] === 'read') throw Object.assign(new Error('Browser authorization required'), { code: 'ANAPLAN_BROWSER_LOGIN' });
+    return read(...args);
+  };
+  await assert.rejects(f.tracker.restoreSaved(app, { id: 'saved', revision: 1, page: { id: secondPageId }, messages: [] }), { code: 'ANAPLAN_BROWSER_LOGIN' });
+  assert.equal(f.tracker.state.browserSignInRequired, true); assert.equal(f.tracker.state.ticket, '');
+  assert.equal(f.tracker.state.context, null); assert.equal(f.tracker.state.mode, 'follow');
+  assert.equal(f.tracker.state.loading, false);
+});
 test('an unsupported current page retains alternatives and cannot request a verification ticket', async () => {
   const f = fixture(), read = f.tracker.read;
   let verifies = 0; const api = f.tracker.api;
